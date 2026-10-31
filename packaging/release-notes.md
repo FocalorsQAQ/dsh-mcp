@@ -7,6 +7,8 @@ English floating control window.
 
 源码采用 **MIT**。这是社区项目，不是 DeepSeek 或 OpenAI 官方产品。
 
+发布前已通过 126 项测试及真实安装器、安装后 MCP/CLI 任务、双语界面和卸载保留数据检查；任务测试使用本地模拟模型，没有产生 API 费用。
+
 ### 下载与安装
 
 - `dsh-mcp-0.1.0-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
