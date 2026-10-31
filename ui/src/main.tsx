@@ -7,11 +7,12 @@ import { t, useLocale, type LocalizedNotice } from './i18n';
 import { LanguageSelector } from './language-selector';
 import { ApiManager } from './api-manager';
 import { ModelManager } from './model-manager';
+import { FloatingOrb } from './floating-orb';
 import './style.css';
 import './density.css';
 import './language.css';
 
-const blank: DesktopState = { connection: { status: 'connecting', workspace_name: t("workspace.current"), workspace_root: '', snapshot: null, message: t("connection.connecting") }, window: { compact: false } };
+const blank: DesktopState = { connection: { status: 'connecting', workspace_name: t("workspace.current"), workspace_root: '', snapshot: null, message: t("connection.connecting") }, window: { compact: false, floating: false } };
 const defaults: ControlPolicy = { enabled: false, max_root_agents: 4, allow_secondary: false, max_depth_user: 1,
   max_children_user: 1, round_budget: null, task_budget: null, billing_currency: 'USD' };
 const formatMoney = (value: number) => value.toFixed(2);
@@ -166,6 +167,6 @@ function App() {
 
 function LocalizedRoot() {
   useLocale();
-  return location.hash === '#api-keys' ? <ApiManager /> : location.hash === '#models' ? <ModelManager /> : <App />;
+  return location.hash === '#api-keys' ? <ApiManager /> : location.hash === '#models' ? <ModelManager /> : location.hash === '#orb' ? <FloatingOrb /> : <App />;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><LocalizedRoot /></React.StrictMode>);

@@ -26,3 +26,4 @@ jobs:
       - run: pnpm release:audit
       - run: pnpm smoke
       - run: pnpm test:ui-autostart
+      - run: pnpm test:orb-ui

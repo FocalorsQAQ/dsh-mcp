@@ -9,8 +9,8 @@
   "error.UI_DISCONNECTED": "尚未连接 dsh，连接后即可修改设置。",
   "error.STORAGE": "设置未能保存，请检查项目目录是否可写。",
   "error.default": "操作未完成，请检查连接并重试。",
-  "window.minimizeAria": "最小化窗口",
-  "window.minimize": "最小化",
+  "window.minimizeAria": "收起为悬浮球",
+  "window.minimize": "收起为悬浮球",
   "window.close": "关闭窗口",
   "window.closeHint": "关闭控制窗，任务继续运行",
   "outsourcing.enable": "启用外包",
@@ -195,5 +195,10 @@
   "pricing.fileExpired": "{provider} 价格表已过期，请核验价格并更新有效期。",
   "language.select": "界面语言",
   "error.UI_LOCALE": "暂不支持此界面语言。",
-  "error.UI_PREFERENCES": "语言偏好未能保存，请检查数据目录是否可写。"
+  "error.UI_PREFERENCES": "语言偏好未能保存，请检查数据目录是否可写。",
+  "orb.restore": "展开控制窗口",
+  "orb.active": "并发",
+  "orb.offline": "离线",
+  "orb.tooltip": "当前并发 {count} / {limit}（含子代理）。点击展开，拖动移动。",
+  "orb.disconnected": "服务未连接。点击展开控制窗口，拖动移动。"
 }

@@ -16,3 +16,4 @@ __pycache__/
 release-output/
 *.local.toml
 /codex-registration*.json
+/initialization-result.json

@@ -1,6 +1,6 @@
 # dsh 悬浮控制窗
 
-初版使用 Electron 45、React 19、TypeScript 和 Vite 8。深色悬浮窗支持拖动、最小化、紧凑模式和窗口位置记忆。Windows 下不占任务栏，通过 Win32 `GWLP_HWNDPARENT` 归属于 Codex 主窗口，不使用全局置顶。API 密钥按钮已接入独立的配置管理窗口；模型按钮已接入 [模型配置窗口](model-management.md)。已保存的 API key 不回传或展示，详见 [API 配置管理](api-management.md)。
+初版使用 Electron 45、React 19、TypeScript 和 Vite 8。深色悬浮窗支持拖动、悬浮球、紧凑模式和窗口位置记忆。Windows 下不占任务栏，通过 Win32 `GWLP_HWNDPARENT` 归属于 Codex 主窗口，不使用全局置顶。API 密钥按钮已接入独立的配置管理窗口；模型按钮已接入 [模型配置窗口](model-management.md)。已保存的 API key 不回传或展示，详见 [API 配置管理](api-management.md)。
 
 窗口标题为 DeepSeek Harness as Subagent。费用统一显示为 `0.00 USD + 0.00 CNY`，只对显示四舍五入，账本和预算判断保持原始精度。
 
@@ -41,6 +41,21 @@ node scripts/start-ui.mjs --config D:/path/to/dsh.config.json
 控制窗与 MCP 必须使用相同的配置和 `data_dir`。MCP 启动配置仍使用 `dist/cli.js`，无需把 Electron 配置成 MCP 命令。更新代码后需要重启已有 dsh MCP 进程，让它加载新的 UI 连接服务；`config/codex.toml` 是现有接入样例。
 
 **窗口可以先打开。** 没有运行中的 dsh 服务时显示“等待服务连接”，禁用设置修改；MCP 启动后自动连接。关闭窗口仅退出 UI，不关闭 MCP 或代理；MCP 退出时窗口保留上次数据并明确标记已断开，自动等待重连。不会为了打开界面启动第二个代理管理器，也不会自动执行模型任务。
+
+## 悬浮球
+
+从 v0.1.3 开始，标题栏的最小化按钮会收起面板，显示一个约 60 像素直径的悬浮球。
+数字直接使用服务端 `runtime.active_count`，表示当前占用并发槽位的全部代理，包含二次外包。
+鼠标悬停可查看当前数量与并发上限。服务断线时显示 `—` 和离线标记，避免把旧数字当作实时状态。
+
+拖动球可以移动并记住位置；点击或用键盘激活可展开面板，保留原来的内容、尺寸和紧凑模式。
+悬浮球也不占任务栏、不全局置顶，并归属于 Codex。自动重复启动不会展开它；手动打开程序则会恢复面板。
+这只改变界面显示，任务、队列和预算继续运行。悬浮球与面板共享同一个控制连接。
+
+The minimize button collapses the panel into a small floating orb showing live
+total concurrency, including delegated child agents. Drag to move, click to
+restore the panel. Position is saved, disconnected counts show a dash, and
+existing tasks continue. The orb supports both interface languages.
 
 ## 控件和数据显示
 
@@ -104,6 +119,7 @@ pnpm run ui:build
 pnpm test
 pnpm run test:ui
 pnpm run test:ui-autostart
+pnpm run test:orb-ui
 pnpm run smoke
 ```
 

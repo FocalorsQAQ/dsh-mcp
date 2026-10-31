@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.2](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.2)
+[下载 v0.1.2](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.3)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.2-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.3-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -36,14 +36,22 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 回传聊天功能默认关闭，兼容的 Codex 宿主可按 `docs/completion-delivery.md` 单独启用。
 如需关闭控制窗自动打开，在 `dsh.config.json` 中加入 `"ui_auto_start": false` 并重启 Codex。
 
+### 从旧版本升级
+
+v0.1.3 修复了覆盖安装 v0.1.2 时可能出现的 `CLI core initialization failed`。
+新版本会验证并迁移安装目录内指向同名依赖包的旧链接，保留现有配置与数据。
+即使 v0.1.2 已经复制文件后报错，也可以直接运行 v0.1.3 安装器修复，无需先删除数据目录。
+初始化结果保存在安装目录的 `initialization-result.json`，详细错误也会写入 Setup Log。
+普通文件夹、指向安装目录外的链接或无法确认所属包的链接会保留并报错，避免覆盖其他内容。
+
 ## 手动安装已编译程序
 
 **只下载本程序 ZIP 不够，必须同时下载 DeepSeek Harness CLI 核心包。**
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.2-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.2-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.3-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.3-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -105,6 +113,12 @@ program files, and are retained on uninstall. To build from source, install
 Node.js 24.9+, pnpm 11 and Python 3.10+, then run the commands above.
 `pnpm install` downloads the mandatory CLI and matching SDK automatically.
 The UI supports Simplified Chinese and English.
+
+Version 0.1.3 fixes upgrades from earlier releases, including installations left
+in a mixed state after the v0.1.2 initialization error. Run the newer installer
+over the existing location; settings and data are retained. Only verified links
+between managed packages with matching package names are migrated. Initialization
+details are written to `initialization-result.json` and the Setup Log.
 
 This initial release targets Windows x64. MIT applies to this project's own
 source; bundled third-party software retains its original licenses. See

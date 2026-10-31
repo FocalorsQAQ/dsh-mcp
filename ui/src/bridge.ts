@@ -2,7 +2,7 @@ import type { UiConnectionState } from '../../src/ui-protocol.ts';
 import type { ControlPolicy } from '../../src/control-contract.ts';
 import type { ApiRegistrySnapshot, ApiAdd, ApiUpdate, ApiRemove } from '../../src/credential-contract';
 import type { ModelDraft, ModelConfigSnapshot, ProbeReceipt } from '../../src/model-config-contract';
-export type DesktopState = { connection: UiConnectionState; window: { compact: boolean } };
+export type DesktopState = { connection: UiConnectionState; window: { compact: boolean; floating: boolean } };
 type Reply<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
 declare global {
   interface Window {
@@ -32,7 +32,8 @@ declare global {
       updateSettings(patch: Partial<ControlPolicy>, revision: number): Promise<Reply<DesktopState>>;
       openManagementWindow(window: 'api_keys' | 'models'): Promise<Reply<unknown>>;
       reconnect(): Promise<Reply<DesktopState>>;
-      windowAction(action: 'compact' | 'minimize' | 'close'): Promise<Reply<DesktopState>>;
+      windowAction(action: 'compact' | 'minimize' | 'restore' | 'close'): Promise<Reply<DesktopState>>;
+      dragOrb(action: 'start' | 'move' | 'end'): Promise<Reply<{ dragged: boolean }>>;
       subscribe(listener: (state: DesktopState) => void): () => void;
     };
   }

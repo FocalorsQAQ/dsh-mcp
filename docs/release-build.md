@@ -38,6 +38,12 @@ provider, the packaged Electron windows, and missing/corrupt dependency handling
 No credentials, model configuration, chats, test artifacts or local `.env` files
 belong in either archive or source control.
 
+Also test upgrades using `node scripts/test-release.mjs --upgrade-from 0.1.1
+--through-failed-012` (on one command line). Keep the original baseline release
+archives and installer in `release-output`. This reproduces v0.1.2's old-link
+conflict, then verifies recovery by the new installer, preservation of user
+configuration/data, runtime tasks, the floating UI and uninstall.
+
 Publish the two ZIPs, installer, `SHA256SUMS.txt` and `release-manifest.json` in
 the matching GitHub release. The installer embeds the exact release URLs and ZIP
 hashes; it never uses a moving `latest` URL. Verify public downloads after

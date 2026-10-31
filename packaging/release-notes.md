@@ -1,11 +1,22 @@
-同步打开悬浮窗 / Automatic floating window — Windows x64
+实时并发悬浮球与升级修复 / Floating orb and upgrade repair — Windows x64
 
-v0.1.2：Codex 完成 dsh MCP 初始化后，默认自动打开悬浮控制窗。窗口复用同一数据目录的现有实例，不抢焦点、不恢复用户已最小化的窗口。手动打开仍可恢复窗口；配置 `"ui_auto_start": false` 可关闭自动打开。界面与 MCP 分离运行，关闭界面不停止任务。
+最小化按钮改为收起到悬浮球，显示实时总并发数（包含子代理）。支持拖动并记住位置、点击展开、离线状态和中英文。反复收起展开会保留面板内容与尺寸，后台任务继续运行。
 
-The floating control window now opens automatically when Codex initializes dsh.
-The existing instance is reused without stealing focus or restoring a minimized
-window. Manual launch can still restore it. Set `"ui_auto_start": false` to opt out.
-Closing the UI does not stop MCP tasks.
+The minimize button now collapses the panel to a floating orb showing live total
+concurrency, including child agents. Drag it to move, click to restore; position
+is saved and disconnected counts show a dash. Both languages are supported.
+
+v0.1.3 修复旧版覆盖安装时的 `CLI core initialization failed`。此前旧依赖链接保留下来，而新版依赖包目录已经改变，导致初始化被中止。现在安装器会验证并迁移同一安装目录内、属于同名依赖包的链接；失败时恢复原链接。普通目录、外部链接和不同包的链接不会被覆盖。
+
+已经遇到 v0.1.2 初始化错误的用户，可直接运行本版安装器修复。原有设置、API 配置和用户数据保留；不需要删除数据目录或重新输入密钥。初始化结果写入 `initialization-result.json`，详细错误也会进入 Setup Log。
+
+Version 0.1.3 fixes `CLI core initialization failed` during upgrades. Verified
+links between managed packages are migrated to the new layout, with rollback if
+a replacement fails. Existing settings and user data are retained. This also
+repairs installations left in a mixed state by a failed v0.1.2 upgrade. Errors
+are recorded in `initialization-result.json` and the Setup Log.
+
+Codex 加载 dsh 时仍会自动打开悬浮窗，复用已有窗口且不抢焦点。可用 `"ui_auto_start": false` 关闭自动打开。
 
 安装时默认勾选 **Connect dsh to Codex automatically**，会自动注册 MCP 服务；重启 Codex 即可加载。不需要另外安装 Codex CLI。原有设置会保留并备份，同名冲突不会被替换。卸载只移除安装器创建且未被用户修改的条目。手动安装可以运行 `Connect to Codex.cmd`。
 
@@ -22,9 +33,9 @@ English floating control window.
 
 ### 下载与安装
 
-- `dsh-mcp-0.1.2-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
-- `dsh-mcp-0.1.2-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.2-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
+- `dsh-mcp-0.1.3-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
+- `dsh-mcp-0.1.3-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.3-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
 - `SHA256SUMS.txt` / `release-manifest.json`：哈希、版本与来源信息。
 
 **手动安装必须同时下载两个 ZIP，解压到同一空文件夹，再运行 `Initialize.cmd`。只下载程序 ZIP 或源码不能直接运行。**

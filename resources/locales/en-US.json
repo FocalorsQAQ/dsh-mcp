@@ -9,8 +9,8 @@
   "error.UI_DISCONNECTED": "Connect to dsh before changing settings.",
   "error.STORAGE": "Settings could not be saved. Check that the project directory is writable.",
   "error.default": "The operation could not be completed. Check the connection and try again.",
-  "window.minimizeAria": "Minimize window",
-  "window.minimize": "Minimize",
+  "window.minimizeAria": "Collapse to floating orb",
+  "window.minimize": "Floating orb",
   "window.close": "Close window",
   "window.closeHint": "Close the control window; tasks keep running",
   "outsourcing.enable": "Enable delegation",
@@ -195,5 +195,10 @@
   "pricing.fileExpired": "The {provider} price file expired. Review the rates and update the expiry date.",
   "language.select": "Interface language",
   "error.UI_LOCALE": "This interface language is not available.",
-  "error.UI_PREFERENCES": "The language preference could not be saved. Check that the data directory is writable."
+  "error.UI_PREFERENCES": "The language preference could not be saved. Check that the data directory is writable.",
+  "orb.restore": "Expand control window",
+  "orb.active": "Active",
+  "orb.offline": "Offline",
+  "orb.tooltip": "{count} / {limit} active agents, including subagents. Click to expand; drag to move.",
+  "orb.disconnected": "Service disconnected. Click to expand; drag to move."
 }

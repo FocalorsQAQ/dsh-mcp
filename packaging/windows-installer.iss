@@ -100,10 +100,10 @@ var
 begin
   if CurStep = ssPostInstall then begin
     Arguments := '"' + ExpandConstant('{app}\packaging\initialize.mjs') + '" --workspace "' + WorkspacePage.Values[0] + '" --data-dir "' + ExpandConstant('{param:DATADIR|{localappdata}\dsh-mcp\data}') + '"';
-    if not Exec(ExpandConstant('{app}\bin\node\node.exe'), Arguments,
-      ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then
+    if not ExecAndLogOutput(ExpandConstant('{app}\bin\node\node.exe'), Arguments,
+      ExpandConstant('{app}'), SW_SHOWNORMAL, ewWaitUntilTerminated, Code, nil) then
       RaiseException('Unable to initialize the CLI core.');
-    if Code <> 0 then RaiseException('CLI core initialization failed. Re-run Initialize.cmd to view details.');
+    if Code <> 0 then RaiseException('CLI core initialization failed. See initialization-result.json in the installation folder and the Setup Log for details.');
     if WizardIsTaskSelected('codex') then begin
       if not Exec(ExpandConstant('{app}\bin\python\python.exe'),
         '-I -B "' + ExpandConstant('{app}\packaging\codex_registration.py') + '" register --root "' + ExpandConstant('{app}') + '"',

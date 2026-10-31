@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('dsh', {
   openManagementWindow: window => ipcRenderer.invoke('dsh:window:intent', { window }),
   reconnect: () => ipcRenderer.invoke('dsh:reconnect'),
   windowAction: action => ipcRenderer.invoke('dsh:window:action', action),
+  dragOrb: action => ipcRenderer.invoke('dsh:orb:drag', action),
   subscribe: listener => {
     const wrapped = (_event, value) => listener(value);
     ipcRenderer.on('dsh:state', wrapped);

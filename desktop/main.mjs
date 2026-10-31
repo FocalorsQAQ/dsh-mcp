@@ -42,15 +42,25 @@ function savePreferences(next) {
 }
 let window;
 let ownerHelper;
+let orbWindow;
+let orbOwnerHelper;
+let floating = false;
+let orbDrag;
+let panelContentBounds;
+const orbSize = 72;
 let compact = false;
 let fullHeight = 840;
 const client = new UiClient(config.data_dir, config.workspace_root);
-const state = () => ({ connection: client.snapshot(), window: { compact } });
-const publish = () => { if (window && !window.isDestroyed() && !window.webContents.isLoadingMainFrame()) window.webContents.send('dsh:state', state()); };
+const state = () => ({ connection: client.snapshot(), window: { compact, floating } });
+const publish = () => { for (const target of [window, orbWindow]) if (target && !target.isDestroyed() && !target.webContents.isLoadingMainFrame()) target.webContents.send('dsh:state', state()); };
 client.subscribe(publish);
 
+function acceptsControl(event) {
+  return [window, orbWindow].some(target => target && !target.isDestroyed() && event.sender === target.webContents &&
+    event.senderFrame?.url === rendererUrl + (target === orbWindow ? '#orb' : '') && !event.senderFrame.parent);
+}
 function trusted(event) {
-  if (!window || event.sender !== window.webContents || event.senderFrame?.url !== rendererUrl || event.senderFrame?.parent) {
+  if (!acceptsControl(event)) {
     throw new Error('Untrusted control sender.');
   }
 }
@@ -70,7 +80,7 @@ const modelWindow = createModelWindow({ root, dataDir: config.data_dir, credenti
 
 // Language is a local UI preference, independent of the MCP service and provider settings.
 const languageHandler = (name, action) => ipcMain.handle(name, (event, ...args) => {
-  const fromControl = window && !window.isDestroyed() && event.sender === window.webContents && event.senderFrame?.url === rendererUrl && !event.senderFrame.parent;
+  const fromControl = acceptsControl(event);
   if (!fromControl && !apiWindow.accepts(event) && !modelWindow.accepts(event)) return { ok: false, code: 'FORBIDDEN' };
   try { return { ok: true, value: action(...args) }; }
   catch (error) { return { ok: false, code: error.code ?? 'UI_PREFERENCES' }; }
@@ -82,6 +92,7 @@ languageHandler('dsh:language:set', value => {
   locale = value;
   window?.setTitle(t('app.title'));
   if (window && !window.isDestroyed()) window.webContents.send('dsh:language', locale);
+  if (orbWindow && !orbWindow.isDestroyed()) orbWindow.webContents.send('dsh:language', locale);
   apiWindow.languageChanged(locale);
   modelWindow.languageChanged(locale);
   return locale;
@@ -98,13 +109,79 @@ handler('dsh:window:intent', async (input) => {
   await modelWindow.open(); return { window: 'models', implemented: true };
 });
 handler('dsh:reconnect', () => { client.reconnect(); return state(); });
-handler('dsh:window:action', (action) => {
+function attachOwner(target) {
+  if (process.platform !== 'win32') return;
+  const hwnd = target.getNativeWindowHandle().readBigUInt64LE().toString();
+  const helper = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', join(root, 'desktop/owner-window.ps1'), '-WindowHandle', hwnd, '-WindowProcessId', String(process.pid)], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+  helper.on('error', error => process.stderr.write('[dsh owner] ' + error.message + '\n'));
+  helper.stderr.on('data', data => process.stderr.write(data));
+  return helper;
+}
+function secureContents(target) {
+  target.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  target.webContents.on('will-navigate', event => event.preventDefault());
+  target.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  target.webContents.session.setPermissionCheckHandler(() => false);
+}
+function orbPosition(point) {
+  const display = screen.getDisplayNearestPoint(point).workArea;
+  return { x: Math.round(Math.max(display.x, Math.min(point.x, display.x + display.width - orbSize))),
+    y: Math.round(Math.max(display.y, Math.min(point.y, display.y + display.height - orbSize))) };
+}
+async function showOrb() {
+  if (floating) return;
+  if (!orbWindow || orbWindow.isDestroyed()) {
+    const bounds = window.getBounds();
+    const saved = preferences.orb_bounds;
+    const point = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? saved : { x: bounds.x + bounds.width - orbSize, y: bounds.y };
+    orbWindow = new BrowserWindow({ title: t('app.title'), ...orbPosition(point), width: orbSize, height: orbSize,
+      frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false, resizable: false,
+      maximizable: false, fullscreenable: false, skipTaskbar: true, show: false,
+      webPreferences: { additionalArguments: ['--dsh-locale=' + locale], preload: join(root, 'desktop/preload.cjs'),
+        contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
+    });
+    orbWindow.removeMenu(); secureContents(orbWindow); orbOwnerHelper = attachOwner(orbWindow);
+    orbWindow.on('closed', () => { orbOwnerHelper?.kill(); orbWindow = undefined; });
+    await orbWindow.loadFile(rendererPath, { hash: 'orb' });
+  }
+  panelContentBounds = window.getContentBounds();
+  floating = true; window.hide(); orbWindow.showInactive(); publish();
+}
+function restoreControl() {
+  const fromOrb = floating;
+  floating = false; orbDrag = undefined; orbWindow?.hide();
+  if (window.isMinimized()) window.restore();
+  window.show();
+  if (fromOrb && panelContentBounds) window.setContentBounds(panelContentBounds);
+  window.focus(); publish();
+}
+handler('dsh:orb:drag', action => {
+  if (!floating || !orbWindow || !['start', 'move', 'end'].includes(action)) return { dragged: false };
+  if (action === 'start') orbDrag = { cursor: screen.getCursorScreenPoint(), bounds: orbWindow.getBounds(), dragged: false };
+  if (!orbDrag) return { dragged: false };
+  if (action === 'move') {
+    const cursor = screen.getCursorScreenPoint(), dx = cursor.x - orbDrag.cursor.x, dy = cursor.y - orbDrag.cursor.y;
+    if (Math.hypot(dx, dy) >= 4) orbDrag.dragged = true;
+    if (orbDrag.dragged) {
+      const point = orbPosition({ x: orbDrag.bounds.x + dx, y: orbDrag.bounds.y + dy });
+      orbWindow.setPosition(point.x, point.y);
+    }
+  }
+  const dragged = orbDrag.dragged;
+  if (action === 'end') {
+    if (dragged) { const { x, y } = orbWindow.getBounds(); try { savePreferences({ ...preferences, orb_bounds: { x, y } }); } catch { /* Moving must still work. */ } }
+    orbDrag = undefined;
+  }
+  return { dragged };
+});
+handler('dsh:window:action', async (action) => {
   if (action === 'compact') {
     if (!compact) fullHeight = window.getBounds().height;
     compact = !compact;
     window.setMinimumSize(400, compact ? 212 : 660);
     window.setSize(window.getBounds().width, compact ? 212 : fullHeight);
-  } else if (action === 'minimize') window.minimize();
+  } else if (action === 'minimize') await showOrb();
+  else if (action === 'restore') restoreControl();
   else if (action === 'close') window.close();
   else throw new Error('Unknown window action.');
   publish(); return state();
@@ -115,7 +192,7 @@ else {
   app.on('second-instance', (_event, argv, _directory, additionalData) => {
     // Reconnecting MCP clients must not restore minimized windows or steal focus.
     if (additionalData?.autoStart === true || argv.includes('--auto-start')) return;
-    if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); }
+    if (window) { restoreControl(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); }
   });
   app.whenReady().then(async () => {
     const work = screen.getPrimaryDisplay().workArea;
@@ -132,20 +209,13 @@ else {
         nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
     });
     window.removeMenu();
-    if (process.platform === 'win32') {
-      const hwnd = window.getNativeWindowHandle().readBigUInt64LE().toString();
-      ownerHelper = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', join(root, 'desktop/owner-window.ps1'), '-WindowHandle', hwnd, '-WindowProcessId', String(process.pid)], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
-      ownerHelper.on('error', error => process.stderr.write('[dsh owner] ' + error.message + '\n'));
-      ownerHelper.stderr.on('data', data => process.stderr.write(data));
-    }
-    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    window.webContents.on('will-navigate', event => event.preventDefault());
-    window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-    window.webContents.session.setPermissionCheckHandler(() => false);
+    ownerHelper = attachOwner(window);
+    secureContents(window);
     window.once('ready-to-show', () => { if (autoStart) window.showInactive(); else window.show(); });
     window.on('close', () => {
       apiWindow.close();
       modelWindow.close();
+      orbWindow?.close();
       const bounds = window.getBounds();
       try { savePreferences({ ...preferences, locale, bounds: { ...bounds, height: fullHeight } }); } catch { /* Window close must still work. */ }
     });
