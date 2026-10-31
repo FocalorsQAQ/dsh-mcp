@@ -1,0 +1,12 @@
+.language-control { margin-left: auto; flex-shrink: 0; }
+.language-control select { font: inherit; color: var(--muted); background: var(--bg); border: 1px solid #424242; border-radius: 5px; height: 23px; max-width: 94px; padding: 0 3px; cursor: pointer; -webkit-app-region: no-drag; color-scheme: dark; }
+.language-control select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.language-error { position: absolute; bottom: 36px; right: 18px; max-width: 300px; padding: 10px; border: 1px solid #714848; border-radius: 7px; background: #332525; color: #efc2bc; z-index: 10; }
+.project-name { min-width: 0; }
+.hero-heading { min-width: 0; }
+.hero-symbol { flex-shrink: 0; }
+html[lang="en-US"] .hero h1 { font-size: 17px; }
+html[lang="en-US"] .hero-status { gap: 6px; }
+html[lang="en-US"] .setting-row > div:first-child { min-width: 0; padding-right: 8px; }
+html[lang="en-US"] .nested-limits { gap: 12px; }
+html[lang="en-US"] .api-shell footer > span { min-width: 0; }

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-ui/
+.dsh-mcp/
+.test-output/
+upstream/
+.env
+.env.*
+!.env.example
+dsh.config.local.json
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.release/
+.release-cache/
+release-output/
+*.local.toml

@@ -1,0 +1,20 @@
+# Applied last to every worker; ordinary workspace operations use Harness's policy.
+- id: approval
+  config:
+    policy: never
+- id: session-log-deepseek
+  config:
+    enabled: false
+- id: session-telemetry-otel
+  config:
+    mode: DISABLED
+- id: tool-plugin-manager
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-schedule
+  disabled: true

@@ -1,0 +1,14 @@
+# Merge this table into your Codex config.toml; the server name creates the dsh tool namespace.
+# Replace C:/path/to/dsh-mcp with your checkout. Windows release packages generate their own config.
+[mcp_servers.dsh]
+command = 'node'
+args = [
+  '--env-file-if-exists=C:/path/to/dsh-mcp/.env',
+  'C:/path/to/dsh-mcp/dist/cli.js',
+  '--config',
+  'C:/path/to/dsh-mcp/dsh.config.json'
+]
+cwd = 'C:/path/to/dsh-mcp'
+env_vars = ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL', 'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'CODEX_THREAD_ID', 'CODEX_HOME', 'CODEX_APP_TOOLS_PIPE_PATH', 'CODEX_APP_RUNTIME_CLI_PATH']
+startup_timeout_sec = 20
+tool_timeout_sec = 75

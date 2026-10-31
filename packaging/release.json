@@ -1,0 +1,14 @@
+{
+  "repository": "FocalorsQAQ/dsh-mcp",
+  "version": "0.1.0",
+  "platform": "win-x64",
+  "core_version": "0.2.2-alpha.2",
+  "core_repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "core_tag": "dsh-v0.2.2-alpha.2",
+  "node_version": "24.22.1",
+  "node_sha256": "d2046d28c2c3dcd211ac5145c0bf30e2047ef9dfb306693c8c6e2eccd8b95fa5",
+  "python_version": "3.13.9",
+  "python_sha256": "91d828c2da3a029b41699e918674a0cb379c02cf20dab9c501306885f837402a",
+  "inno_version": "6.5.3",
+  "inno_sha256": "9345ee029faa0b7aed0818c3d5b227699ef9a496cce79e20c19eb9d6ef2e2c2d"
+}

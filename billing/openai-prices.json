@@ -1,0 +1,6 @@
+{
+  "verified_at": "2026-10-31",
+  "valid_until": "2026-11-07T00:00:00Z",
+  "source": "https://developers.openai.com/api/docs/models/gpt-5-mini",
+  "gpt-5-mini": { "USD": [0.25, 0.025, 2] }
+}

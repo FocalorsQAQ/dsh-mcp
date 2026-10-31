@@ -1,0 +1,33 @@
+{
+  "workspace_root": ".",
+  "data_dir": ".dsh-mcp",
+  "provider": "deepseek-official",
+  "model": "deepseek-v4-flash",
+  "permission_mode": "workspace-write",
+  "max_concurrent_agents": 4,
+  "max_agents": 100,
+  "billing": {
+    "python": "python",
+    "rules": "./billing/rules.py",
+    "timeout_ms": 2000
+  },
+  "control": {
+    "enabled": true,
+    "max_root_agents": 4,
+    "allow_secondary": false,
+    "max_depth_user": 1,
+    "max_children_user": 1,
+    "round_budget": null,
+    "task_budget": null,
+    "billing_currency": "USD"
+  },
+  "max_pending_messages": 64,
+  "max_events": 1000,
+  "initialize_timeout_ms": 30000,
+  "turn_timeout_ms": 1800000,
+  "completion_delivery": {
+    "mode": "app_tools",
+    "max_chars": 6000,
+    "timeout_ms": 15000
+  }
+}

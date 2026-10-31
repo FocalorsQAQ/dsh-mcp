@@ -1,0 +1,155 @@
+import { spawn } from 'node:child_process';
+import { app, BrowserWindow, ipcMain, screen, safeStorage } from 'electron';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { parseArgs } from 'node:util';
+import { loadConfig } from '../dist/config.js';
+import { UiClient } from '../dist/ui-client.js';
+import { settingsCommandSchema, windowIntentSchema } from '../dist/ui-protocol.js';
+import { createApiWindow } from './api-window.mjs';
+import { createModelWindow } from './model-window.mjs';
+import { CredentialRegistry } from '../dist/credentials.js';
+import { languages, startupLocale, translate } from './localization.mjs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const { values } = parseArgs({ args: process.argv.slice(2), options: {
+  config: { type: 'string' }, workspace: { type: 'string' }, 'data-dir': { type: 'string' }, 'api-keys': { type: 'boolean' }, models: { type: 'boolean' },
+}, strict: false, allowPositionals: true });
+const config = loadConfig(values.config ?? join(root, 'dsh.config.json'), { workspace: values.workspace, dataDir: values['data-dir'] });
+const uiHome = join(config.data_dir, 'desktop');
+mkdirSync(uiHome, { recursive: true });
+app.setPath('userData', uiHome);
+const preferencesPath = join(uiHome, 'window.json');
+const rendererPath = join(root, 'dist-ui', 'index.html');
+const rendererUrl = pathToFileURL(rendererPath).href;
+let preferences = {};
+try { preferences = JSON.parse(readFileSync(preferencesPath, 'utf8')); } catch { /* Use defaults. */ }
+let locale = startupLocale(process.env.DSH_UI_LOCALE, preferences.locale);
+const t = (key, parameters) => translate(locale, key, parameters);
+app.setName(t('app.title'));
+function savePreferences(next) {
+  const temporary = preferencesPath + '.' + randomUUID() + '.tmp';
+  try {
+    writeFileSync(temporary, JSON.stringify(next), { mode: 0o600 });
+    renameSync(temporary, preferencesPath);
+    preferences = next;
+  } finally {
+    try { unlinkSync(temporary); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+}
+let window;
+let ownerHelper;
+let compact = false;
+let fullHeight = 840;
+const client = new UiClient(config.data_dir, config.workspace_root);
+const state = () => ({ connection: client.snapshot(), window: { compact } });
+const publish = () => { if (window && !window.isDestroyed() && !window.webContents.isLoadingMainFrame()) window.webContents.send('dsh:state', state()); };
+client.subscribe(publish);
+
+function trusted(event) {
+  if (!window || event.sender !== window.webContents || event.senderFrame?.url !== rendererUrl || event.senderFrame?.parent) {
+    throw new Error('Untrusted control sender.');
+  }
+}
+const handler = (name, action) => ipcMain.handle(name, async (event, ...args) => {
+  trusted(event);
+  try { return { ok: true, value: await action(...args) }; }
+  catch (error) { return { ok: false, code: error?.code ?? 'UI_REQUEST', message: friendlyError(error?.code) }; }
+});
+function friendlyError(code) { return t('error.' + code); }
+const credentials = new CredentialRegistry(join(config.data_dir, 'credentials.json'), {
+  available: () => process.platform === 'linux' ? Promise.resolve(false) : safeStorage.isAsyncEncryptionAvailable(),
+  encrypt: value => safeStorage.encryptStringAsync(value),
+  decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
+});
+const apiWindow = createApiWindow({ root, registry: credentials, locale: () => locale, translate: t, parent: () => window });
+const modelWindow = createModelWindow({ root, dataDir: config.data_dir, credentials, locale: () => locale, translate: t, parent: () => window });
+
+// Language is a local UI preference, independent of the MCP service and provider settings.
+const languageHandler = (name, action) => ipcMain.handle(name, (event, ...args) => {
+  const fromControl = window && !window.isDestroyed() && event.sender === window.webContents && event.senderFrame?.url === rendererUrl && !event.senderFrame.parent;
+  if (!fromControl && !apiWindow.accepts(event) && !modelWindow.accepts(event)) return { ok: false, code: 'FORBIDDEN' };
+  try { return { ok: true, value: action(...args) }; }
+  catch (error) { return { ok: false, code: error.code ?? 'UI_PREFERENCES' }; }
+});
+languageHandler('dsh:language:get', () => locale);
+languageHandler('dsh:language:set', value => {
+  if (typeof value !== 'string' || !Object.hasOwn(languages, value)) throw { code: 'UI_LOCALE' };
+  try { savePreferences({ ...preferences, locale: value }); } catch { throw { code: 'UI_PREFERENCES' }; }
+  locale = value;
+  window?.setTitle(t('app.title'));
+  if (window && !window.isDestroyed()) window.webContents.send('dsh:language', locale);
+  apiWindow.languageChanged(locale);
+  modelWindow.languageChanged(locale);
+  return locale;
+});
+
+handler('dsh:state:get', () => state());
+handler('dsh:settings:update', async (input) => {
+  const command = settingsCommandSchema.parse(input);
+  await client.updateSettings(command.patch, command.expected_revision); return state();
+});
+handler('dsh:window:intent', async (input) => {
+  const command = windowIntentSchema.parse(input);
+  if (command.window === 'api_keys') { await apiWindow.open(); return { window: 'api_keys', implemented: true }; }
+  await modelWindow.open(); return { window: 'models', implemented: true };
+});
+handler('dsh:reconnect', () => { client.reconnect(); return state(); });
+handler('dsh:window:action', (action) => {
+  if (action === 'compact') {
+    if (!compact) fullHeight = window.getBounds().height;
+    compact = !compact;
+    window.setMinimumSize(400, compact ? 212 : 660);
+    window.setSize(window.getBounds().width, compact ? 212 : fullHeight);
+  } else if (action === 'minimize') window.minimize();
+  else if (action === 'close') window.close();
+  else throw new Error('Unknown window action.');
+  publish(); return state();
+});
+
+if (!app.requestSingleInstanceLock()) app.quit();
+else {
+  app.on('second-instance', (_event, argv) => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); } });
+  app.whenReady().then(async () => {
+    const work = screen.getPrimaryDisplay().workArea;
+    const width = Math.min(460, work.width - 32);
+    fullHeight = Math.min(840, work.height - 48);
+    const saved = preferences.bounds;
+    const display = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? screen.getDisplayMatching(saved).workArea : work;
+    const x = saved ? Math.min(Math.max(saved.x, display.x), display.x + display.width - width) : work.x + work.width - width - 24;
+    const y = saved ? Math.min(Math.max(saved.y, display.y), display.y + display.height - fullHeight) : work.y + 24;
+    window = new BrowserWindow({ title: t('app.title'), width, height: fullHeight, x, y,
+      minWidth: 400, minHeight: 660, maxWidth: 640, frame: false, show: false, skipTaskbar: true,
+      backgroundColor: '#212121', roundedCorners: true, autoHideMenuBar: true,
+      webPreferences: { additionalArguments: ['--dsh-locale=' + locale], preload: join(root, 'desktop', 'preload.cjs'), contextIsolation: true,
+        nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
+    });
+    window.removeMenu();
+    if (process.platform === 'win32') {
+      const hwnd = window.getNativeWindowHandle().readBigUInt64LE().toString();
+      ownerHelper = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', join(root, 'desktop/owner-window.ps1'), '-WindowHandle', hwnd, '-WindowProcessId', String(process.pid)], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+      ownerHelper.on('error', error => process.stderr.write('[dsh owner] ' + error.message + '\n'));
+      ownerHelper.stderr.on('data', data => process.stderr.write(data));
+    }
+    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    window.webContents.on('will-navigate', event => event.preventDefault());
+    window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+    window.webContents.session.setPermissionCheckHandler(() => false);
+    window.once('ready-to-show', () => window.show());
+    window.on('close', () => {
+      apiWindow.close();
+      modelWindow.close();
+      const bounds = window.getBounds();
+      try { savePreferences({ ...preferences, locale, bounds: { ...bounds, height: fullHeight } }); } catch { /* Window close must still work. */ }
+    });
+    window.on('closed', () => { ownerHelper?.kill(); window = undefined; });
+    await window.loadFile(rendererPath);
+    if (values['api-keys']) await apiWindow.open();
+    if (values.models) await modelWindow.open();
+    client.reconnect();
+  }).catch(error => { process.stderr.write('[dsh UI] ' + error.message + '\n'); app.quit(); });
+}
+app.on('window-all-closed', () => app.quit());
+app.on('before-quit', () => client.close());

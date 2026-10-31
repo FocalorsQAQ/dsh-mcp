@@ -1,0 +1,28 @@
+/* Keep all primary controls visible at the default floating-window size. */
+.titlebar { height: 44px; }
+.brand { font-size: 14px; letter-spacing: -.25px; white-space: nowrap; }
+.window-controls { flex-shrink: 0; }
+.cost-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+.cost-grid strong, .last-cost strong { font-size: 13px; }
+.currency-pair { white-space: nowrap; }
+main { padding: 8px 20px 12px; }
+.hero { padding: 8px 0 12px; }
+.hero-status { margin-top: 12px; }
+.control-section { padding-top: 14px; }
+.section-heading { margin-bottom: 9px; }
+.setting-row { min-height: 35px; }
+.row-divider { margin: 9px 0; }
+.nested-limits { margin: 10px 0 14px; padding: 10px 12px; }
+.budget-section { padding-top: 13px; }
+.budget-row { margin: 10px 0 12px; }
+.budget-label { margin-bottom: 6px; }
+.money-inputs > label { height: 30px; }
+.budget-foot { padding-bottom: 12px; }
+.usage-card { padding: 12px; }
+.usage-card .section-heading { margin-bottom: 12px; }
+.cost-grid { padding-bottom: 13px; }
+.tokens-heading { margin: 9px 0; }
+.token-grid > div { gap: 4px; }
+.management-buttons { margin-top: 10px; }
+.management-buttons button { padding-top: 8px; padding-bottom: 8px; }
+footer { height: 30px; padding: 0 20px; }

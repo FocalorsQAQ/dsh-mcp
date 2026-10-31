@@ -1,0 +1,70 @@
+{
+  "name": "dsh-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "FocalorsQAQ",
+  "repository": { "type": "git", "url": "https://github.com/FocalorsQAQ/dsh-mcp.git" },
+  "homepage": "https://github.com/FocalorsQAQ/dsh-mcp#readme",
+  "bugs": { "url": "https://github.com/FocalorsQAQ/dsh-mcp/issues" },
+  "description": "Collaboration-style external agents for Codex, powered by DeepSeek Harness",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/application.d.ts",
+      "import": "./dist/application.js"
+    },
+    "./ui-client": { "types": "./dist/ui-client.d.ts", "import": "./dist/ui-client.js" },
+    "./ui-protocol": { "types": "./dist/ui-protocol.d.ts", "import": "./dist/ui-protocol.js" },
+    "./credentials": { "types": "./dist/credentials.d.ts", "import": "./dist/credentials.js" },
+    "./credential-contract": { "types": "./dist/credential-contract.d.ts", "import": "./dist/credential-contract.js" },
+    "./model-config": { "types": "./dist/model-config.d.ts", "import": "./dist/model-config.js" },
+    "./model-config-contract": { "types": "./dist/model-config-contract.d.ts", "import": "./dist/model-config-contract.js" }
+  },
+  "bin": {
+    "dsh-mcp": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js",
+    "dev": "node --experimental-transform-types src/cli.ts",
+    "test": "node --experimental-transform-types --test tests/*.test.ts",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "smoke": "node scripts/smoke.mjs",
+    "doctor": "node dist/cli.js --doctor",
+    "prices:check": "node --experimental-transform-types scripts/prices.ts",
+    "prices:edit": "node --experimental-transform-types scripts/prices.ts --edit",
+    "ui:build": "tsc --noEmit -p ui/tsconfig.json && vite build --config ui/vite.config.ts",
+    "ui": "pnpm run build && pnpm run ui:build && node scripts/start-ui.mjs",
+    "test:ui": "node scripts/test-ui.mjs",
+    "test:i18n-ui": "node scripts/test-i18n-ui.mjs",
+    "test:api-ui": "node scripts/test-api-ui.mjs",
+    "test:model-ui": "node scripts/test-model-ui.mjs",
+    "release:fetch": "node scripts/release/fetch-inputs.mjs",
+    "release:stage": "node scripts/release/stage.mjs",
+    "release:audit": "node scripts/release/audit.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-llm": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-sdk-client": "0.2.2-alpha.2",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "electron": "^45.1.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "playwright-core": "^1.64.1",
+    "typescript": "6.0.3",
+    "vite": "^8.3.5"
+  }
+}

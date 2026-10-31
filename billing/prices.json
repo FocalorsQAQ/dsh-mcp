@@ -1,0 +1,7 @@
+{
+  "verified_at": "2026-10-31",
+  "valid_until": "2026-11-07T00:00:00Z",
+  "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+  "flash": { "USD": [0.3, 0.006, 1.2], "CNY": [2, 0.04, 8] },
+  "pro": { "USD": [1.32, 0.044, 3.96], "CNY": [9, 0.30, 27] }
+}

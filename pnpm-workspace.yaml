@@ -1,0 +1,12 @@
+packages:
+  - '.'
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  esbuild: true
+  electron: true
+  koffi: true
+  node-pty: true
+  '@google/genai': false
+  protobufjs: false
+  node-addon-require-builtin: false
+  msgpackr-extract: false
