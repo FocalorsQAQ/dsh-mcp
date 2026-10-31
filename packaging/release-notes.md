@@ -1,4 +1,11 @@
-自动接入 Codex / Automatic Codex setup — Windows x64
+同步打开悬浮窗 / Automatic floating window — Windows x64
+
+v0.1.2：Codex 完成 dsh MCP 初始化后，默认自动打开悬浮控制窗。窗口复用同一数据目录的现有实例，不抢焦点、不恢复用户已最小化的窗口。手动打开仍可恢复窗口；配置 `"ui_auto_start": false` 可关闭自动打开。界面与 MCP 分离运行，关闭界面不停止任务。
+
+The floating control window now opens automatically when Codex initializes dsh.
+The existing instance is reused without stealing focus or restoring a minimized
+window. Manual launch can still restore it. Set `"ui_auto_start": false` to opt out.
+Closing the UI does not stop MCP tasks.
 
 安装时默认勾选 **Connect dsh to Codex automatically**，会自动注册 MCP 服务；重启 Codex 即可加载。不需要另外安装 Codex CLI。原有设置会保留并备份，同名冲突不会被替换。卸载只移除安装器创建且未被用户修改的条目。手动安装可以运行 `Connect to Codex.cmd`。
 
@@ -11,13 +18,13 @@ English floating control window.
 
 源码采用 **MIT**。这是社区项目，不是 DeepSeek 或 OpenAI 官方产品。
 
-发布前已通过 126 项测试及真实安装器、安装后 MCP/CLI 任务、双语界面和卸载保留数据检查；任务测试使用本地模拟模型，没有产生 API 费用。
+验证包含单元测试、真实 MCP 自动打开 Electron、重复打开与最小化保留、手动恢复、关闭自动打开，以及安装包内运行和卸载保留数据检查；测试不调用付费模型。
 
 ### 下载与安装
 
-- `dsh-mcp-0.1.1-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
-- `dsh-mcp-0.1.1-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.1-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
+- `dsh-mcp-0.1.2-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
+- `dsh-mcp-0.1.2-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.2-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
 - `SHA256SUMS.txt` / `release-manifest.json`：哈希、版本与来源信息。
 
 **手动安装必须同时下载两个 ZIP，解压到同一空文件夹，再运行 `Initialize.cmd`。只下载程序 ZIP 或源码不能直接运行。**

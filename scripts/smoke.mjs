@@ -28,7 +28,7 @@ writeFileSync(join(rolloutDirectory, 'rollout-fixture-' + sourceThread + '.jsonl
   { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'LOCAL_CODEX_SOURCE_MARKER' }] } },
   { type: 'response_item', payload: { type: 'reasoning', encrypted_content: 'EXCLUDED_PRIVATE_REASONING' } },
 ].map(item => JSON.stringify(item) + '\n').join(''));
-writeFileSync(configPath, JSON.stringify({ workspace_root: workspace, data_dir: join(directory, 'data'), codex_home: codexHome, turn_timeout_ms: 120000,
+writeFileSync(configPath, JSON.stringify({ workspace_root: workspace, data_dir: join(directory, 'data'), ui_auto_start: false, codex_home: codexHome, turn_timeout_ms: 120000,
   ...(process.env.DSH_RELEASE_ROOT ? { billing: { python: join(runtimeRoot, 'bin/python/python.exe') } } : {}),
   control: { allow_secondary: true, max_depth_user: 2, max_children_user: 2 },
   completion_delivery: { mode: 'app_tools', thread_id: sourceThread } }));

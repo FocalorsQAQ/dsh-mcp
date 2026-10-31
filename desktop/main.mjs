@@ -15,9 +15,10 @@ import { languages, startupLocale, translate } from './localization.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({ args: process.argv.slice(2), options: {
-  config: { type: 'string' }, workspace: { type: 'string' }, 'data-dir': { type: 'string' }, 'api-keys': { type: 'boolean' }, models: { type: 'boolean' },
+  config: { type: 'string' }, workspace: { type: 'string' }, 'data-dir': { type: 'string' }, 'api-keys': { type: 'boolean' }, models: { type: 'boolean' }, 'auto-start': { type: 'boolean' },
 }, strict: false, allowPositionals: true });
-const config = loadConfig(values.config ?? join(root, 'dsh.config.json'), { workspace: values.workspace, dataDir: values['data-dir'] });
+const autoStart = values['auto-start'] === true;
+const config = loadConfig(values.config ?? (autoStart ? undefined : join(root, 'dsh.config.json')), { workspace: values.workspace, dataDir: values['data-dir'] });
 const uiHome = join(config.data_dir, 'desktop');
 mkdirSync(uiHome, { recursive: true });
 app.setPath('userData', uiHome);
@@ -109,9 +110,13 @@ handler('dsh:window:action', (action) => {
   publish(); return state();
 });
 
-if (!app.requestSingleInstanceLock()) app.quit();
+if (!app.requestSingleInstanceLock({ autoStart })) app.quit();
 else {
-  app.on('second-instance', (_event, argv) => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); } });
+  app.on('second-instance', (_event, argv, _directory, additionalData) => {
+    // Reconnecting MCP clients must not restore minimized windows or steal focus.
+    if (additionalData?.autoStart === true || argv.includes('--auto-start')) return;
+    if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); }
+  });
   app.whenReady().then(async () => {
     const work = screen.getPrimaryDisplay().workArea;
     const width = Math.min(460, work.width - 32);
@@ -137,7 +142,7 @@ else {
     window.webContents.on('will-navigate', event => event.preventDefault());
     window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     window.webContents.session.setPermissionCheckHandler(() => false);
-    window.once('ready-to-show', () => window.show());
+    window.once('ready-to-show', () => { if (autoStart) window.showInactive(); else window.show(); });
     window.on('close', () => {
       apiWindow.close();
       modelWindow.close();

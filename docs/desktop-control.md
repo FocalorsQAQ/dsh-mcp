@@ -14,7 +14,13 @@ Win32 归属辅助进程只修改控制窗自身，识别桌面 Codex（含 Open
 
 ## 启动
 
-在项目目录运行：
+从 v0.1.2 开始，Windows 上的 MCP 服务在客户端完成初始化时默认自动打开悬浮窗。安装后重启 Codex，加载 dsh 时即可显示；不需要额外设置 Windows 开机启动项。`--doctor`、`--help` 和单纯启动但尚未连接客户端的 stdio 进程不会弹窗。
+
+同一个 `data_dir` 使用 Electron 单实例锁，重复自动启动会保留现有窗口和最小化状态，不抢焦点。首次自动打开也不抢焦点。手动启动仍会显示、恢复并聚焦已有窗口。关闭控制窗不会停止 MCP；同一个 MCP 进程不会反复把已关闭的窗口弹回来，重启 MCP 后可以再次自动打开。不同 `data_dir` 的窗口仍独立。
+
+可以在 MCP 使用的 `dsh.config.json` 中设置 `"ui_auto_start": false` 并重启 MCP，关闭自动打开。旧配置无需增加字段，Windows 默认开启；其他系统默认关闭。自动打开使用 MCP 实际生效的工作区、数据目录和配置文件；UI 启动异常不会导致 MCP 工具不可用。源码运行前需先执行 `pnpm ui:build`。
+
+也可以在项目目录手动运行：
 
 ```powershell
 pnpm ui
@@ -97,6 +103,7 @@ pnpm run build
 pnpm run ui:build
 pnpm test
 pnpm run test:ui
+pnpm run test:ui-autostart
 pnpm run smoke
 ```
 

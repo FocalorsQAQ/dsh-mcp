@@ -8,6 +8,7 @@ import { loadConfig } from './config.ts';
 import { createApplication } from './application.ts';
 import { errorText } from './types.ts';
 import { startUiBridge } from './ui-bridge.ts';
+import { launchControlUi } from './ui-launcher.ts';
 
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: {
@@ -20,7 +21,8 @@ async function main(): Promise<void> {
       'dsh-mcp --doctor   Print local configuration and dependency status, without calling a model.\n');
     return;
   }
-  const config = loadConfig(values.config ?? process.env.DSH_MCP_CONFIG, { workspace: values.workspace, dataDir: values['data-dir'] });
+  const configPath = values.config ?? process.env.DSH_MCP_CONFIG;
+  const config = loadConfig(configPath, { workspace: values.workspace, dataDir: values['data-dir'] });
   if (values.doctor) {
     const require = createRequire(import.meta.url);
     const cliManifest = require.resolve('@deepseek-ai/dsh/package.json');
@@ -62,6 +64,15 @@ async function main(): Promise<void> {
   process.once('SIGINT', () => void shutdown());
   process.once('SIGTERM', () => void shutdown());
   server.server.onclose = () => void shutdown();
+  let uiStarted = false;
+  server.server.oninitialized = () => {
+    if (closing || uiStarted) return;
+    uiStarted = true;
+    // UI startup is optional and must never delay or fail the MCP handshake/tools.
+    void launchControlUi(config, configPath).catch(error => {
+      process.stderr.write('[dsh] Could not open the control window: ' + errorText(error) + '\n');
+    });
+  };
   try { await server.connect(transport); }
   catch (error) { await shutdown(); throw error; }
 }

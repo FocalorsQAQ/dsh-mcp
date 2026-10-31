@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.1](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.1)
+[下载 v0.1.2](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.2)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.1-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.2-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -23,7 +23,7 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 1. 打开开始菜单中的 **DeepSeek Harness as Subagent**。
 2. 在 API 管理中添加自己的凭据，再添加并启用模型。
 3. 安装时默认勾选 **Connect dsh to Codex automatically**，安装器会自动注册 `dsh`。
-   重启 Codex 后即可加载工具；控制窗口需要 MCP 服务启动后才能显示在线状态。
+   重启 Codex 后即可加载工具，同时自动打开悬浮控制窗；已有窗口会复用且不抢焦点。
    如果取消自动接入，可运行开始菜单中的 **Connect to Codex**，或手动使用 `codex-mcp.toml`。
 4. 可在控制窗底部切换简体中文 / English。
 
@@ -34,6 +34,7 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 不会替换它；结果写入安装目录的 `codex-registration-result.json`。卸载仅移除安装器
 自己添加且未被用户修改的条目。更换工作区时编辑 `workspace_root` 并重启 MCP 和控制窗。
 回传聊天功能默认关闭，兼容的 Codex 宿主可按 `docs/completion-delivery.md` 单独启用。
+如需关闭控制窗自动打开，在 `dsh.config.json` 中加入 `"ui_auto_start": false` 并重启 Codex。
 
 ## 手动安装已编译程序
 
@@ -41,8 +42,8 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.1-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.1-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.2-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.2-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -89,7 +90,10 @@ extract them to the same empty folder and run `Initialize.cmd`. Downloading
 only the application ZIP is insufficient: you must also download the
 DeepSeek Harness CLI core archive. Then open `Control UI.cmd`, configure your
 API keys and models. The installer registers dsh with Codex by default; restart
-Codex to load the tools. Manual ZIP users can run `Connect to Codex.cmd`.
+Codex to load the tools and automatically open the floating control window.
+An existing window is reused without taking focus or restoring it from minimized state.
+Set `"ui_auto_start": false` in `dsh.config.json` to disable automatic opening.
+Manual ZIP users can run `Connect to Codex.cmd`.
 Use `Initialize.cmd --workspace "D:\YourProject"` to select a workspace.
 
 Registration preserves existing settings and creates a backup. A conflicting

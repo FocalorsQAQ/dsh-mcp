@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "license": "MIT",
   "author": "FocalorsQAQ",
@@ -64,6 +64,7 @@
     "ui:build": "tsc --noEmit -p ui/tsconfig.json && vite build --config ui/vite.config.ts",
     "ui": "pnpm run build && pnpm run ui:build && node scripts/start-ui.mjs",
     "test:ui": "node scripts/test-ui.mjs",
+    "test:ui-autostart": "node scripts/test-ui-autostart.mjs",
     "test:i18n-ui": "node scripts/test-i18n-ui.mjs",
     "test:api-ui": "node scripts/test-api-ui.mjs",
     "test:model-ui": "node scripts/test-model-ui.mjs",
