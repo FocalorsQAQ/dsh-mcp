@@ -1,12 +1,17 @@
 {
   "name": "dsh-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "MIT",
   "author": "FocalorsQAQ",
-  "repository": { "type": "git", "url": "https://github.com/FocalorsQAQ/dsh-mcp.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FocalorsQAQ/dsh-mcp.git"
+  },
   "homepage": "https://github.com/FocalorsQAQ/dsh-mcp#readme",
-  "bugs": { "url": "https://github.com/FocalorsQAQ/dsh-mcp/issues" },
+  "bugs": {
+    "url": "https://github.com/FocalorsQAQ/dsh-mcp/issues"
+  },
   "description": "Collaboration-style external agents for Codex, powered by DeepSeek Harness",
   "type": "module",
   "exports": {
@@ -14,12 +19,30 @@
       "types": "./dist/application.d.ts",
       "import": "./dist/application.js"
     },
-    "./ui-client": { "types": "./dist/ui-client.d.ts", "import": "./dist/ui-client.js" },
-    "./ui-protocol": { "types": "./dist/ui-protocol.d.ts", "import": "./dist/ui-protocol.js" },
-    "./credentials": { "types": "./dist/credentials.d.ts", "import": "./dist/credentials.js" },
-    "./credential-contract": { "types": "./dist/credential-contract.d.ts", "import": "./dist/credential-contract.js" },
-    "./model-config": { "types": "./dist/model-config.d.ts", "import": "./dist/model-config.js" },
-    "./model-config-contract": { "types": "./dist/model-config-contract.d.ts", "import": "./dist/model-config-contract.js" }
+    "./ui-client": {
+      "types": "./dist/ui-client.d.ts",
+      "import": "./dist/ui-client.js"
+    },
+    "./ui-protocol": {
+      "types": "./dist/ui-protocol.d.ts",
+      "import": "./dist/ui-protocol.js"
+    },
+    "./credentials": {
+      "types": "./dist/credentials.d.ts",
+      "import": "./dist/credentials.js"
+    },
+    "./credential-contract": {
+      "types": "./dist/credential-contract.d.ts",
+      "import": "./dist/credential-contract.js"
+    },
+    "./model-config": {
+      "types": "./dist/model-config.d.ts",
+      "import": "./dist/model-config.js"
+    },
+    "./model-config-contract": {
+      "types": "./dist/model-config-contract.d.ts",
+      "import": "./dist/model-config-contract.js"
+    }
   },
   "bin": {
     "dsh-mcp": "dist/cli.js"

@@ -16,7 +16,8 @@ const copy = (from, to) => { mkdirSync(dirname(to), { recursive: true }); cpSync
   filter: source => !['__pycache__', '.dsh-mcp', '.env'].includes(basename(source)) && !source.endsWith('.pyc'),
 }); };
 for (const path of ['dist', 'dist-ui', 'desktop', 'resources', 'billing', 'runtime', 'licenses', 'docs', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'package.json', 'config/worker.patch.yml', 'scripts/start-ui.mjs', 'packaging/initialize.mjs', 'packaging/launch-server.mjs', 'packaging/uninstall-links.mjs']) copy(join(root, path), join(app, path));
-for (const name of ['Initialize.cmd', 'Control UI.cmd', 'Harness CLI.cmd']) copy(join(root, 'packaging', name), join(app, name));
+copy(join(root, 'packaging/codex_registration.py'), join(app, 'packaging/codex_registration.py'));
+for (const name of ['Initialize.cmd', 'Control UI.cmd', 'Harness CLI.cmd', 'Connect to Codex.cmd']) copy(join(root, 'packaging', name), join(app, name));
 copy(join(root, 'dsh.config.json'), join(app, 'dsh.config.example.json'));
 writeFileSync(join(app, 'release-info.json'), JSON.stringify(config, null, 2));
 

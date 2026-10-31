@@ -9,6 +9,10 @@ const root = resolve('.test-output/release'); mkdirSync(root, {recursive:true});
 const directory = mkdtempSync(join(root,'run-'));
 const install = join(directory,'installed app'), data=join(directory,'user-data'), workspace=join(directory,'workspace');
 const config = JSON.parse(readFileSync('packaging/release.json','utf8'));
+const codexHome = join(directory, 'codex-home'); mkdirSync(codexHome);
+const originalCodex = '# Existing user settings\nmodel = "preserved-model"\n';
+writeFileSync(join(codexHome, 'config.toml'), originalCodex);
+const installEnvironment = { ...process.env, CODEX_HOME: codexHome };
 const installer = resolve('release-output',`dsh-mcp-${config.version}-setup-win-x64.exe`);
 async function run(exe,args,options={}) {
   const child = spawn(exe,args,{windowsHide:true,stdio:['ignore','pipe','pipe'],...options});
@@ -19,7 +23,9 @@ async function run(exe,args,options={}) {
 }
 const args=['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS',`/DIR=${install}`,`/WORKSPACE=${workspace}`,`/DATADIR=${data}`,`/LOG=${join(directory,'install.log')}`];
 if (!process.argv.includes('--online')) args.push('/PACKAGEDIR='+resolve('release-output'));
-await run(installer,args);
+await run(installer,args,{env:installEnvironment});
+assert.match(readFileSync(join(codexHome, 'config.toml'),'utf8'), /\[mcp_servers\.dsh\]/);
+assert(readFileSync(join(codexHome, 'config.toml'),'utf8').startsWith(originalCodex));
 assert(existsSync(join(install,'codex-mcp.toml')));
 assert(existsSync(join(install,'node_modules/@deepseek-ai/dsh/lib/bin.js')));
 const node=join(install,'bin/node/node.exe'), python=join(install,'bin/python/python.exe');
@@ -27,6 +33,11 @@ const cfg=join(install,'dsh.config.json');
 const doctor=JSON.parse(await run(node,[join(install,'packaging/launch-server.mjs'),'--config',cfg,'--doctor']));
 assert(doctor.cli_exists && doctor.versions_match); assert.equal(doctor.cli_version,config.core_version);
 assert.equal(doctor.workspace_root,workspace); assert.equal(doctor.data_dir,data);
+if (process.env.DSH_TEST_CODEX_EXE) {
+  const registered = await run(process.env.DSH_TEST_CODEX_EXE, ['mcp','get','dsh','--json'], { env:installEnvironment });
+  assert(registered.includes('launch-server.mjs'));
+  writeFileSync(join(directory,'codex-readback.json'),registered);
+}
 await run(python,['-I','-B','-c','import ctypes, json, importlib, pathlib; print("embedded Python ready")']);
 // Ensure initialization is idempotent and does not overwrite existing user settings.
 const original=readFileSync(cfg,'utf8'); await run(node,[join(install,'packaging/initialize.mjs')]); assert.equal(readFileSync(cfg,'utf8'),original);
@@ -46,5 +57,6 @@ writeFileSync(join(data,'keep-on-uninstall.txt'),'user data must survive uninsta
 await run(join(install,'unins000.exe'),['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',`/LOG=${join(directory,'uninstall.log')}`]);
 assert(existsSync(join(data,'keep-on-uninstall.txt')));
 assert(!existsSync(join(install,'bin/node/node.exe')));
+assert.equal(readFileSync(join(codexHome, 'config.toml'),'utf8'), originalCodex);
 const report={directory,online:process.argv.includes('--online'),doctor,checks:['installer','embedded runtimes','CLI resolution','idempotent initialization','English UI','real MCP/SDK/CLI mock tasks','uninstall preserves user data'],paid_api_calls:0};
 writeFileSync(join(directory,'report.json'),JSON.stringify(report,null,2)); console.log(JSON.stringify(report,null,2));

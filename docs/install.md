@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.0](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.0)
+[下载 v0.1.1](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.1)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.0-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.1-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -22,13 +22,17 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 1. 打开开始菜单中的 **DeepSeek Harness as Subagent**。
 2. 在 API 管理中添加自己的凭据，再添加并启用模型。
-3. 将安装目录生成的 `codex-mcp.toml` 内容加入 Codex 的 MCP 配置，重新连接 MCP。
-   安装器不会覆盖已有 Codex 配置。控制窗口需要 MCP 服务启动后才能显示在线状态。
+3. 安装时默认勾选 **Connect dsh to Codex automatically**，安装器会自动注册 `dsh`。
+   重启 Codex 后即可加载工具；控制窗口需要 MCP 服务启动后才能显示在线状态。
+   如果取消自动接入，可运行开始菜单中的 **Connect to Codex**，或手动使用 `codex-mcp.toml`。
 4. 可在控制窗底部切换简体中文 / English。
 
 配置文件为安装目录中的 `dsh.config.json`。默认状态及加密凭据保存于
 `%LOCALAPPDATA%\dsh-mcp\data`。卸载程序不删除凭据、会话和账本；重新安装也不会
-覆盖现有配置。更换工作区时编辑 `workspace_root` 并重启 MCP 和控制窗。
+覆盖现有配置。自动接入使用 `CODEX_HOME/config.toml`（未设置时使用 `~/.codex/config.toml`），
+保留原有文字和其他配置，修改前在同目录保存备份。如果已有不同的 `dsh` 条目，
+不会替换它；结果写入安装目录的 `codex-registration-result.json`。卸载仅移除安装器
+自己添加且未被用户修改的条目。更换工作区时编辑 `workspace_root` 并重启 MCP 和控制窗。
 回传聊天功能默认关闭，兼容的 Codex 宿主可按 `docs/completion-delivery.md` 单独启用。
 
 ## 手动安装已编译程序
@@ -37,11 +41,11 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.0-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.0-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.1-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.1-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
-`Control UI.cmd`。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
+`Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
 不要在初始化前直接启动 CLI，也不要只解压核心包。目录链接和配置绑定安装位置，
 因此请直接解压到最终位置；要移动时应重新解压两个 ZIP 到新位置再初始化。
 `Harness CLI.cmd` 可直接运行核心 CLI。
@@ -84,10 +88,14 @@ For manual installation, download **both ZIP archives from the same release**,
 extract them to the same empty folder and run `Initialize.cmd`. Downloading
 only the application ZIP is insufficient: you must also download the
 DeepSeek Harness CLI core archive. Then open `Control UI.cmd`, configure your
-API keys and models, and add the generated `codex-mcp.toml` section to Codex.
+API keys and models. The installer registers dsh with Codex by default; restart
+Codex to load the tools. Manual ZIP users can run `Connect to Codex.cmd`.
 Use `Initialize.cmd --workspace "D:\YourProject"` to select a workspace.
 
-The installer does not overwrite your Codex configuration. User state and
+Registration preserves existing settings and creates a backup. A conflicting
+existing `dsh` entry is left unchanged; check `codex-registration-result.json`
+or merge `codex-mcp.toml` manually. Uninstall removes only an unchanged entry
+created by this installer. User state and
 encrypted credentials are kept in `%LOCALAPPDATA%\dsh-mcp\data`, outside the
 program files, and are retained on uninstall. To build from source, install
 Node.js 24.9+, pnpm 11 and Python 3.10+, then run the commands above.

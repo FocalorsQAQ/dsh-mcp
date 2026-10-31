@@ -1,6 +1,6 @@
 # DeepSeek Harness as Subagent · dsh MCP
 
-[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.0) · [安装说明 / Installation](docs/install.md)
+[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.1) · [安装说明 / Installation](docs/install.md)
 
 **在线安装器从 GitHub 下载程序及 DeepSeek Harness CLI 核心运行包，并校验文件。手动安装必须同时下载程序 ZIP 与 CLI 核心 ZIP。** CLI 来自官方 dsh 项目，本项目将固定版本的官方 npm 包及其依赖重新分发为 GitHub Release 附件，详见[来源和安装方式](docs/install.md)。本项目为独立社区集成，非 DeepSeek 或 OpenAI 官方产品。
 
@@ -51,7 +51,7 @@ Codex / MCP 客户端
 
 ## 安装、运行与接入 Codex
 
-普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.0)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
+普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.1)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
 
 计费公式已独立为 `billing/rules.py`，价格表为 `billing/prices.json` 与 `billing/openai-prices.json`。价格表保存后自动重载；可用 `pnpm prices:edit deepseek` / `pnpm prices:edit openai` 打开编辑器，`pnpm prices:check` 校验。可以在配置的 `billing.rules` 中指定自己的 Python 文件；预算、账本和异常处理仍由服务端执行。详见 [Python 自定义计费](docs/billing.md)。
 
@@ -73,7 +73,7 @@ node --env-file-if-exists=.env dist/cli.js --config dsh.config.json
 
 这是 stdio 服务，启动后等待 MCP 请求；stdout 专供 JSON-RPC，诊断写入 stderr。`--doctor` 检查配置和依赖，不调用模型，也不打印密钥。
 
-**Codex 配置模板在 `config/codex.toml`。** 将占位路径换成你的项目路径，再把 `[mcp_servers.dsh]` 合并到 `~/.codex/config.toml`，或受信任项目的 `.codex/config.toml`，然后重启 MCP 连接。Windows 安装版会生成带实际路径的 `codex-mcp.toml`。程序不会自动覆盖已有的 Codex 配置。
+**Windows 安装版默认自动接入 Codex**，安装后重启 Codex 即可加载。它会备份配置并保留原有设置，遇到不同的同名 `dsh` 配置则提示手动处理。手动 ZIP 安装可运行 `Connect to Codex.cmd`。源码配置模板在 `config/codex.toml`：替换占位路径，再合并到用户配置或受信任项目的 `.codex/config.toml`。安装版也保留 `codex-mcp.toml` 供手动接入。
 
 按 Codex 客户端的展示方式，工具通常以 `mcp__dsh__spawn_agent` 等名称出现。stdio 的 `command`、`args`、`cwd`、环境变量及超时配置依据 [OpenAI 官方 MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
 

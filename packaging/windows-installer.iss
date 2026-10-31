@@ -26,6 +26,9 @@ UninstallDisplayIcon={app}\node_modules\electron\dist\electron.exe
 CloseApplications=no
 DisableProgramGroupPage=yes
 
+[Tasks]
+Name: "codex"; Description: "Connect dsh to Codex automatically (recommended)"; GroupDescription: "Codex integration:"
+
 [Files]
 Source: "{tmp}\{#AppArchive}"; DestDir: "{app}"; Flags: external extractarchive recursesubdirs ignoreversion
 Source: "{tmp}\{#CoreArchive}"; DestDir: "{app}"; Flags: external extractarchive recursesubdirs ignoreversion
@@ -33,12 +36,14 @@ Source: "{tmp}\{#CoreArchive}"; DestDir: "{app}"; Flags: external extractarchive
 [Icons]
 Name: "{group}\DeepSeek Harness as Subagent"; Filename: "{app}\node_modules\electron\dist\electron.exe"; Parameters: """{app}\desktop\main.mjs"" --config ""{app}\dsh.config.json"""; WorkingDir: "{app}"
 Name: "{group}\Installation guide"; Filename: "https://github.com/FocalorsQAQ/dsh-mcp/blob/main/docs/install.md"
+Name: "{group}\Connect to Codex"; Filename: "{app}\Connect to Codex.cmd"; WorkingDir: "{app}"
 Name: "{group}\Uninstall"; Filename: "{uninstallexe}"
 
 [Run]
 Filename: "{app}\node_modules\electron\dist\electron.exe"; Parameters: """{app}\desktop\main.mjs"" --config ""{app}\dsh.config.json"""; Description: "Open DeepSeek Harness as Subagent"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
+Filename: "{app}\bin\python\python.exe"; Parameters: "-I -B ""{app}\packaging\codex_registration.py"" unregister --root ""{app}"""; Flags: runhidden waituntilterminated; RunOnceId: "dsh-remove-codex-registration"
 Filename: "{app}\bin\node\node.exe"; Parameters: """{app}\packaging\uninstall-links.mjs"""; Flags: runhidden waituntilterminated; RunOnceId: "dsh-remove-runtime-links"
 
 [Code]
@@ -99,5 +104,14 @@ begin
       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then
       RaiseException('Unable to initialize the CLI core.');
     if Code <> 0 then RaiseException('CLI core initialization failed. Re-run Initialize.cmd to view details.');
+    if WizardIsTaskSelected('codex') then begin
+      if not Exec(ExpandConstant('{app}\bin\python\python.exe'),
+        '-I -B "' + ExpandConstant('{app}\packaging\codex_registration.py') + '" register --root "' + ExpandConstant('{app}') + '"',
+        ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then Code := 2;
+      if Code <> 0 then
+        SuppressibleMsgBox('The application is installed, but Codex registration needs attention. Existing Codex settings were preserved. See codex-registration-result.json in the installation folder, or use codex-mcp.toml to connect manually.', mbInformation, MB_OK, IDOK)
+      else
+        WizardForm.FinishedLabel.Caption := 'Installation completed and dsh is registered with Codex. Restart Codex to load the tools. Add API keys and enable a model in the control window before running a task.';
+    end;
   end;
 end;
