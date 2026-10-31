@@ -31,16 +31,18 @@ restores these links at the user's installation path. Bundled Node.js and Python
 are separate from the host system. `core-manifest.json` records upstream source
 and version; `THIRD_PARTY_PACKAGES.json` records every shipped npm package.
 
-Before publication, test a fresh extraction and the actual installer using
-`/PACKAGEDIR="<release-output>" /DIR="<temporary-install>"` with isolated
-`/WORKSPACE` and `/DATADIR` directories. Test an MCP task against a local mock
-provider, the packaged Electron windows, and missing/corrupt dependency handling.
+Before publication, run `node scripts/test-release.mjs`. It compiles the same
+installer source with an isolated Windows application ID and Start menu group,
+then installs the release payloads into temporary directories with separate
+workspace, data and Codex settings. Changing `/DIR` alone does not isolate
+Windows uninstall registration. The test runs an MCP task against a local mock
+provider, the packaged Electron windows, and installation/uninstallation checks.
 No credentials, model configuration, chats, test artifacts or local `.env` files
 belong in either archive or source control.
 
 Also test upgrades using `node scripts/test-release.mjs --upgrade-from 0.1.1
 --through-failed-012` (on one command line). Keep the original baseline release
-archives and installer in `release-output`. This reproduces v0.1.2's old-link
+archives in `release-output` and their source tags locally. This reproduces v0.1.2's old-link
 conflict, then verifies recovery by the new installer, preservation of user
 configuration/data, runtime tasks, the floating UI and uninstall.
 

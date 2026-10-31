@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright-core';
+import { testInstaller } from './release/test-installer.mjs';
 
 const root = resolve('.test-output/release'); mkdirSync(root, {recursive:true});
 const directory = mkdtempSync(join(root,'run-'));
@@ -13,7 +14,7 @@ const codexHome = join(directory, 'codex-home'); mkdirSync(codexHome);
 const originalCodex = '# Existing user settings\nmodel = "preserved-model"\n';
 writeFileSync(join(codexHome, 'config.toml'), originalCodex);
 const installEnvironment = { ...process.env, CODEX_HOME: codexHome };
-const installer = resolve('release-output',`dsh-mcp-${config.version}-setup-win-x64.exe`);
+const installer = testInstaller(config.version, directory);
 async function run(exe,args,options={}) {
   const { allowFailure = false, ...spawnOptions } = options;
   const child = spawn(exe,args,{windowsHide:true,stdio:['ignore','pipe','pipe'],...spawnOptions});
@@ -30,7 +31,7 @@ let previousConfig;
 if (upgradeIndex >= 0) {
   assert.match(upgradeFrom ?? '', /^0\.1\.[01]$/);
   const baselineArgs = args.filter(arg => !arg.startsWith('/LOG='));
-  await run(resolve('release-output', `dsh-mcp-${upgradeFrom}-setup-win-x64.exe`),
+  await run(testInstaller(upgradeFrom, directory),
     [...baselineArgs, `/LOG=${join(directory, 'baseline-install.log')}`], { env: installEnvironment });
   const configPath = join(install, 'dsh.config.json');
   const settings = JSON.parse(readFileSync(configPath, 'utf8')); settings.max_concurrent_agents = 2;

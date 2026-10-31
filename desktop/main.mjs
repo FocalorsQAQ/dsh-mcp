@@ -47,6 +47,7 @@ let orbOwnerHelper;
 let floating = false;
 let orbDrag;
 let panelContentBounds;
+let controlClosing = false;
 const orbSize = 72;
 let compact = false;
 let fullHeight = 840;
@@ -130,6 +131,7 @@ function orbPosition(point) {
 }
 async function showOrb() {
   if (floating) return;
+  panelContentBounds = window.getContentBounds();
   if (!orbWindow || orbWindow.isDestroyed()) {
     const bounds = window.getBounds();
     const saved = preferences.orb_bounds;
@@ -141,10 +143,12 @@ async function showOrb() {
         contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
     });
     orbWindow.removeMenu(); secureContents(orbWindow); orbOwnerHelper = attachOwner(orbWindow);
-    orbWindow.on('closed', () => { orbOwnerHelper?.kill(); orbWindow = undefined; });
+    orbWindow.on('closed', () => {
+      orbOwnerHelper?.kill(); orbWindow = undefined;
+      if (floating && !controlClosing && window && !window.isDestroyed()) window.close();
+    });
     await orbWindow.loadFile(rendererPath, { hash: 'orb' });
   }
-  panelContentBounds = window.getContentBounds();
   floating = true; window.hide(); orbWindow.showInactive(); publish();
 }
 function restoreControl() {
@@ -213,6 +217,7 @@ else {
     secureContents(window);
     window.once('ready-to-show', () => { if (autoStart) window.showInactive(); else window.show(); });
     window.on('close', () => {
+      controlClosing = true;
       apiWindow.close();
       modelWindow.close();
       orbWindow?.close();

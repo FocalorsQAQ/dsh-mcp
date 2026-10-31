@@ -93,9 +93,15 @@ try {
   assert.equal(await orb.getByTestId('orb-concurrency').textContent(), '—');
   await orb.screenshot({ path: join(directory, 'orb-offline.png'), omitBackground: true });
   assert.deepEqual(errors, []);
+  const closed = desktop.waitForEvent('close');
+  await desktop.evaluate(({ BrowserWindow }) => {
+    const orb = BrowserWindow.getAllWindows().find(w => new URL(w.webContents.getURL()).hash === '#orb');
+    setTimeout(() => orb.close(), 10);
+  });
+  await closed; desktop = undefined;
   const report = { ok: true, directory, runtime, paid_api_calls: 0,
     checks: ['floating orb replaces minimize button', 'live total concurrency includes child agents', '2 to 1 to 0 updates',
-      'drag without expansion', 'position saved', 'click restores original bounds', 'same orb reused', 'bilingual', 'offline has no stale count'] };
+      'drag without expansion', 'position saved', 'click restores original bounds', 'same orb reused', 'bilingual', 'offline has no stale count', 'closing orb exits the UI'] };
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
 } finally { await desktop?.close(); await mcp.close(); await server.close(); await bridge.close(); await application.close(); }
 function existsPreference() { try { return Boolean(JSON.parse(readFileSync(join(config.data_dir, 'desktop/window.json'), 'utf8')).orb_bounds); } catch { return false; } }
