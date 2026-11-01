@@ -1,6 +1,6 @@
 # DeepSeek Harness as Subagent · dsh MCP
 
-[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.3) · [安装说明 / Installation](docs/install.md)
+[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.4) · [安装说明 / Installation](docs/install.md)
 
 **在线安装器从 GitHub 下载程序及 DeepSeek Harness CLI 核心运行包，并校验文件。手动安装必须同时下载程序 ZIP 与 CLI 核心 ZIP。** CLI 来自官方 dsh 项目，本项目将固定版本的官方 npm 包及其依赖重新分发为 GitHub Release 附件，详见[来源和安装方式](docs/install.md)。本项目为独立社区集成，非 DeepSeek 或 OpenAI 官方产品。
 
@@ -10,11 +10,11 @@
 
 界面支持**简体中文 / English**。在控制窗底部切换，三个窗口即时同步并记住选择；未保存的表单输入会保留。启动时也可用 `DSH_UI_LOCALE=en-US` 指定英文。
 
-点击最小化可收起为**悬浮球**，实时显示全部代理的并发数（含二次外包）。拖动移动，点击展开；断线时显示离线状态。v0.1.3 同时修复旧版覆盖安装时的 CLI 初始化错误，保留已有配置和数据。
+点击最小化可收起为**悬浮球**，实时显示所选聊天的代理并发数（含二次外包）。拖动移动，点击展开；断线时显示离线状态。v0.1.4 修复多聊天与全局工具发现争抢数据目录的问题：每个聊天独立任务、队列和预算，共用 API/模型配置；控制窗可切换聊天。详见 [多聊天连接](docs/multi-chat.md)。
 
 ```text
 Codex / MCP 客户端
-  └─ dsh MCP（stdio，17 个工具）
+  └─ dsh stdio 连接适配器（17 个工具，同一聊天复用一个后台服务）
        └─ 代理管理器：任务、消息队列、并发限制、状态和结果
             └─ 官方 Harness SDK → 官方 dsh CLI 子进程
                  └─ DeepSeek 官方 API + Harness 工作区工具
@@ -53,7 +53,7 @@ Codex / MCP 客户端
 
 ## 安装、运行与接入 Codex
 
-普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.3)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
+普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.4)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
 
 计费公式已独立为 `billing/rules.py`，价格表为 `billing/prices.json` 与 `billing/openai-prices.json`。价格表保存后自动重载；可用 `pnpm prices:edit deepseek` / `pnpm prices:edit openai` 打开编辑器，`pnpm prices:check` 校验。可以在配置的 `billing.rules` 中指定自己的 Python 文件；预算、账本和异常处理仍由服务端执行。详见 [Python 自定义计费](docs/billing.md)。
 
@@ -70,7 +70,7 @@ pnpm run doctor
 将 `.env.example` 复制为 `.env`，在本机填写 `DEEPSEEK_API_KEY`；也可以由启动 Codex 的环境提供该变量。密钥不应放进工具参数或聊天消息。`.env` 已被忽略；下面的启动命令会读取它，已存在的环境变量优先。
 
 ```powershell
-node --env-file-if-exists=.env dist/cli.js --config dsh.config.json
+node --env-file-if-exists=.env packaging/launch-server.mjs --config dsh.config.json
 ```
 
 这是 stdio 服务，启动后等待 MCP 请求；stdout 专供 JSON-RPC，诊断写入 stderr。`--doctor` 检查配置和依赖，不调用模型，也不打印密钥。
@@ -79,7 +79,7 @@ node --env-file-if-exists=.env dist/cli.js --config dsh.config.json
 
 按 Codex 客户端的展示方式，工具通常以 `mcp__dsh__spawn_agent` 等名称出现。stdio 的 `command`、`args`、`cwd`、环境变量及超时配置依据 [OpenAI 官方 MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
 
-每个 MCP 服务进程独占一个 `data_dir`。多个 Codex 进程同时使用时，应为它们配置不同的数据目录；初版不提供跨客户端共享守护进程。
+默认入口按 `CODEX_THREAD_ID` 绑定聊天，每个聊天的后台服务独占 `data_dir/chats/<聊天 UUID>/`，同一聊天的多个 stdio 连接复用该服务。不同聊天可共用根数据目录及 API/模型配置。没有聊天 ID 的连接仅用于工具发现，不能执行代理任务；其他 MCP 客户端需传 `--session-id <UUID>`。诊断或旧宿主可使用 `--single-session` 保留原来的单连接模式，独占所指定的数据目录。详见 [多聊天连接](docs/multi-chat.md)。
 
 ## 调用示例
 
@@ -126,7 +126,7 @@ node --env-file-if-exists=.env dist/cli.js --config dsh.config.json
 
 具有额度的工作进程通过 Harness 官方 MCP 客户端获得 14 个 `mcp__dsh__*` 工具，包括模型与强度查询；全局 `set_concurrency`、`list_deliveries`、`retry_delivery` 仅提供给主调用方。服务端绑定调用者身份，省略 `parent` 即创建自己的直属子代理；它只能查看自身及后代、控制后代，不能指定其他代理或顶层身份来跳过限制。下一层默认 `fork_turns: "none"`，可显式改为 `"all"` 继承其 dsh 父代理上下文。子代理默认不单独向 Codex 聊天回传，父代理通过 `wait_agent` / `read_agent` 收集结果。
 
-所有层仍共享全局 `max_concurrent_agents` 和 `max_agents`；等待子代理的父进程也占并发槽，额度不足时明确报错。初版中断或关闭一个代理仅影响该代理，已有后代继续由管理器跟踪，可单独中断或关闭。
+同一聊天的所有层仍共享 `max_concurrent_agents` 和 `max_agents`；等待子代理的父进程也占并发槽，额度不足时明确报错。不同聊天分别计数，当前没有跨聊天的全局并发上限。初版中断或关闭一个代理仅影响该代理，已有后代继续由管理器跟踪，可单独中断或关闭。
 
 工作进程控制通道只监听本机回环地址，每个进程使用独立临时凭据，退出时关闭。Harness 内建子代理工具仍关闭，嵌套任务统一经过 dsh 管理器。二次外包及所有后代只能使用父代理的模型和 API 来源；子代理模型清单仅显示自身有效模型，不能通过显式 `model` 或 `parent` 参数绕过。推理强度默认继承父代理，可在同模型已声明档位内调整。此限制约束 dsh 工具调用，不是针对任意工作区脚本的操作系统隔离。
 
@@ -153,7 +153,7 @@ node --env-file-if-exists=.env dist/cli.js --config dsh.config.json
 
 新上限立即生效，允许值为 1–32。增加后可立即创建或唤醒更多代理；降低不会中断已有工作，新启动请求在占用数小于上限前返回 `CAPACITY`，运行中代理仍可接收排队跟进。当前没有自动等待空位的任务队列。`list_agents`、`wait_agent` 和控制结果包含 `active_count`、`max_concurrent_agents`、`available_slots`、`over_limit`（超过新上限的占用数）。
 
-上限保存在 `data_dir/state.json` 的 `runtime_settings.max_concurrent_agents`，重启继续生效，原配置文件不会被改写；有保存的覆盖值时优先使用该值，否则读取配置。调整上限会产生 `concurrency_changed` 全局事件，其 `agent_id`、`path`、`status` 为 `null`，即使 `wait_agent` 指定了代理也会返回该事件。相同数值的重复设置不会产生重复事件。外部子代理不获得调整全局并发的工具。
+上限保存在当前聊天的 `state.json`（默认位于 `data_dir/chats/<聊天 UUID>/`）的 `runtime_settings.max_concurrent_agents`，重启继续生效，原配置文件不会被改写；有保存的覆盖值时优先使用该值，否则读取配置。调整上限会产生当前聊天的 `concurrency_changed` 事件，其 `agent_id`、`path`、`status` 为 `null`，即使 `wait_agent` 指定了代理也会返回该事件。相同数值的重复设置不会产生重复事件。外部子代理不获得调整聊天总并发的工具。
 
 ## 暂停与恢复
 
@@ -186,8 +186,8 @@ node --env-file-if-exists=.env dist/cli.js --config dsh.config.json
 
 ## 本地状态与行为边界
 
-- `data_dir/state.json` 保存代理注册表、队列、当前结果和最近事件，采用临时文件替换写入。`agents/<id>/home/` 保存 Harness 会话、缓存和配置。任务文本、输出和提供方凭据可能出现在 Harness 的本地数据中，应按本地开发数据管理，整个目录已被 Git 忽略。
-- 正常退出会停止所有代理；工作完成后也释放 CLI 进程，后续任务恢复同一会话。服务重启后不会自动执行遗留任务；暂停意图保留为 `paused`，其余未结束任务标记为 `interrupted`，已开始的输入都不会自动重试。
+- 当前聊天目录（默认 `data_dir/chats/<聊天 UUID>/`）中的 `state.json` 保存代理注册表、账本、队列、当前结果和最近事件，采用临时文件替换写入。同目录的 `agents/<id>/home/` 保存 Harness 会话、缓存和配置。任务文本、输出和提供方凭据可能出现在 Harness 的本地数据中，应按本地开发数据管理，整个目录已被 Git 忽略。
+- 断开 stdio 连接只移除该连接，不中断其他连接或运行中的任务。没有 MCP 连接且没有运行任务时，聊天服务默认空闲 60 秒后退出（`session_idle_timeout_ms`）；活动任务仍受其超时及预算约束。显式停止服务会清理它的代理。工作完成后释放 CLI 进程，后续任务恢复同一会话。服务重启后不会自动执行遗留任务；暂停意图保留为 `paused`，其余未结束任务标记为 `interrupted`，已开始的输入都不会自动重试。
 - 异常退出后，下一次启动会在操作系统互斥锁内确认旧服务已退出，自动接管 `server.lock` 并清理已知的写入临时文件、旧 UI 连接信息。Windows/Linux 会比较进程创建标识，防止 PID 复用；其他平台遇到仍存在的 PID 会保守拒绝。恢复记录在 `last-recovery.json`，账本和会话保留；中断任务及结果不明的回传不会自动重试。损坏的锁文件仍需人工检查，不能直接猜测归属。详见 [崩溃恢复](docs/recovery.md)。
 - 代理共享工作文件，并没有自动创建 Git worktree。并行修改时应明确分配文件。中断和关闭不会撤销已经写入的文件或外部副作用。
 - 默认使用 Harness 的 `workspace-write` 和 `approval: never`；这里的 `never` 是**拒绝需要额外批准的操作**。也可配置 `read-only`。工作目录检查解析真实路径以拒绝目录穿越和链接逃逸；具体工具的读写限制由 Harness 执行，外部进程不自动继承 Codex 的权限设置。
@@ -218,6 +218,7 @@ pnpm run smoke
 | --- | --- |
 | `src/server.ts` | dsh 工具定义、输入校验和 MCP 返回格式 |
 | `src/application.ts` | UI/宿主控制 API 与模型 MCP 的共同入口 |
+| `src/multi-client.ts` / `sessions.ts` / `socket-transport.ts` | 多连接适配、聊天目录和后台服务生命周期 |
 | `src/control-contract.ts` | 控制协议、货币、策略与计费类型 |
 | `src/control-plane.ts` | 用户策略、共享轮次预算、预留和持久账本 |
 | `src/models.ts` | 模型目录、元数据读取与复核价格 |
@@ -230,7 +231,7 @@ pnpm run smoke
 | `src/control-bridge.ts` | 工作进程专用的本机 MCP 控制连接 |
 | `src/store.ts` | 独占数据目录与持久化 |
 | `src/config.ts` | 配置、工作区目录和子进程环境 |
-| `src/cli.ts` | stdio 入口、退出清理和诊断 |
+| `packaging/launch-server.mjs` / `src/cli.ts` | 默认多聊天入口；兼容单连接模式和诊断 |
 | `config/worker.patch.yml` | 工作进程的默认能力和权限配置 |
 
 自动回传的配置、去重和本机接口限制见 [完成结果回传](docs/completion-delivery.md)。项目配置已启用 `app_tools`；普通空配置默认关闭。可用 `notify_on_completion: false` 关闭单个任务回传。

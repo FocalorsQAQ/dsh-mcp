@@ -14,7 +14,8 @@ export function FloatingOrb() {
   const connected = state?.connection.status === 'connected';
   const runtime = state?.connection.snapshot?.runtime;
   const count = connected && runtime ? runtime.active_count : '—';
-  const title = connected && runtime ? t('orb.tooltip', { count, limit: runtime.max_concurrent_agents }) : t('orb.disconnected');
+  const session = state?.session_id && state.session_id !== 'legacy' ? t('session.chat', { id: state.session_id.slice(0, 8) }) + '\n' : '';
+  const title = session + (connected && runtime ? t('orb.tooltip', { count, limit: runtime.max_concurrent_agents }) : t('orb.disconnected'));
   const restore = () => void window.dsh.windowAction('restore');
   return <div className="orb-shell">
     <button className={'floating-orb ' + (connected ? 'online' : 'offline') + (typeof count === 'number' && count > 0 ? ' busy' : '')}

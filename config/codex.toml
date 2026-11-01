@@ -4,7 +4,7 @@
 command = 'node'
 args = [
   '--env-file-if-exists=C:/path/to/dsh-mcp/.env',
-  'C:/path/to/dsh-mcp/dist/cli.js',
+  'C:/path/to/dsh-mcp/packaging/launch-server.mjs',
   '--config',
   'C:/path/to/dsh-mcp/dsh.config.json'
 ]

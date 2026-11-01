@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { projectRoot, type Config } from './config.ts';
 
 /** Launch separately from MCP so the renderer cannot write to the protocol's stdout. */
-export async function launchControlUi(config: Config, configPath?: string): Promise<void> {
+export async function launchControlUi(config: Config, configPath?: string, sessionId?: string): Promise<void> {
   if (!config.ui_auto_start) return;
   const main = join(projectRoot, 'desktop/main.mjs');
   if (!existsSync(main) || !existsSync(join(projectRoot, 'dist-ui/index.html'))) {
@@ -19,6 +19,7 @@ export async function launchControlUi(config: Config, configPath?: string): Prom
   const child = spawn(require('electron'), [main, '--auto-start',
     ...(configPath ? ['--config', resolve(configPath)] : []),
     '--workspace', config.workspace_root, '--data-dir', config.data_dir,
+    ...(sessionId ? ['--session-id', sessionId] : []),
   ], { cwd: projectRoot, detached: true, stdio: 'ignore', windowsHide: true, env });
   await once(child, 'spawn');
   child.unref();

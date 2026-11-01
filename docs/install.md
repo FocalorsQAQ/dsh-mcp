@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.2](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.3)
+[下载 v0.1.4](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.4)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.3-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.4-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -27,6 +27,8 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
    如果取消自动接入，可运行开始菜单中的 **Connect to Codex**，或手动使用 `codex-mcp.toml`。
 4. 可在控制窗底部切换简体中文 / English。
 
+这是全局注册的 MCP 服务，可在 Codex 的 MCP 服务设置中查看，不是插件市场安装项。v0.1.4 支持多个聊天及全局工具发现同时连接；每个聊天独立任务和预算，共用 API/模型配置。控制窗的“当前聊天”选择需要查看和控制的聊天，悬浮球显示该聊天并发。出现工具可用不代表每条连接都已成功，应同时检查其他聊天能否正常调用。
+
 配置文件为安装目录中的 `dsh.config.json`。默认状态及加密凭据保存于
 `%LOCALAPPDATA%\dsh-mcp\data`。卸载程序不删除凭据、会话和账本；重新安装也不会
 覆盖现有配置。自动接入使用 `CODEX_HOME/config.toml`（未设置时使用 `~/.codex/config.toml`），
@@ -38,9 +40,11 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 ### 从旧版本升级
 
+v0.1.4 修复多个 MCP 连接独占同一数据目录导致握手失败、工具无法持续发现的问题。升级后重启 Codex，使连接使用新版入口。新聊天的数据在 `data/chats/<聊天 UUID>/` 下；旧根目录会话和账本保留，UI 标为“升级前的会话”，不会自动归入某个聊天。API/模型配置继续共用；新聊天继承旧用户策略作为初始值。详见 [多聊天连接](multi-chat.md)。
+
 v0.1.3 修复了覆盖安装 v0.1.2 时可能出现的 `CLI core initialization failed`。
 新版本会验证并迁移安装目录内指向同名依赖包的旧链接，保留现有配置与数据。
-即使 v0.1.2 已经复制文件后报错，也可以直接运行 v0.1.3 安装器修复，无需先删除数据目录。
+即使 v0.1.2 已经复制文件后报错，也可以直接运行本版安装器修复，无需先删除数据目录。
 初始化结果保存在安装目录的 `initialization-result.json`，详细错误也会写入 Setup Log。
 普通文件夹、指向安装目录外的链接或无法确认所属包的链接会保留并报错，避免覆盖其他内容。
 
@@ -50,8 +54,8 @@ v0.1.3 修复了覆盖安装 v0.1.2 时可能出现的 `CLI core initialization 
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.3-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.3-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.4-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.4-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -113,6 +117,13 @@ program files, and are retained on uninstall. To build from source, install
 Node.js 24.9+, pnpm 11 and Python 3.10+, then run the commands above.
 `pnpm install` downloads the mandatory CLI and matching SDK automatically.
 The UI supports Simplified Chinese and English.
+
+Version 0.1.4 supports concurrent chat and global discovery connections. Each
+chat has its own tasks, queues, limits and budgets; API/model settings are shared.
+Use the desktop chat selector to choose the control and spending view. Restart
+Codex after upgrading. Old root state is retained separately and is not silently
+assigned to a chat. This is a globally registered MCP server, not a marketplace
+plugin. See [multiple chats](multi-chat.md).
 
 Version 0.1.3 fixes upgrades from earlier releases, including installations left
 in a mixed state after the v0.1.2 initialization error. Run the newer installer

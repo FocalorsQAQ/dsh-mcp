@@ -200,5 +200,9 @@
   "orb.active": "并发",
   "orb.offline": "离线",
   "orb.tooltip": "当前并发 {count} / {limit}（含子代理）。点击展开，拖动移动。",
-  "orb.disconnected": "服务未连接。点击展开控制窗口，拖动移动。"
+  "orb.disconnected": "服务未连接。点击展开控制窗口，拖动移动。",
+  "session.select": "当前聊天",
+  "session.chat": "聊天 {id}",
+  "session.legacy": "升级前的会话",
+  "error.UI_SESSION": "聊天已切换或暂不可用，请重新确认操作。"
 }

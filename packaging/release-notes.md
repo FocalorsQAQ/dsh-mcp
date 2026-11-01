@@ -1,20 +1,25 @@
-实时并发悬浮球与升级修复 / Floating orb and upgrade repair — Windows x64
+多聊天 MCP 连接修复 / Multiple-chat MCP connections — Windows x64
 
-最小化按钮改为收起到悬浮球，显示实时总并发数（包含子代理）。支持拖动并记住位置、点击展开、离线状态和中英文。反复收起展开会保留面板内容与尺寸，后台任务继续运行。
+v0.1.4 修复多个 Codex 聊天和全局工具发现同时连接时争抢数据目录，造成 MCP 握手失败、工具无法持续发现的问题。每个聊天使用独立后台服务，同一聊天的多个连接复用它，保留原有数据锁。
 
-The minimize button now collapses the panel to a floating orb showing live total
-concurrency, including child agents. Drag it to move, click to restore; position
-is saved and disconnected counts show a dash. Both languages are supported.
+- 每个聊天独立任务、队列、预算、花费和并发设置，共用 API 密钥与模型配置。
+- 控制窗增加“当前聊天”选择；悬浮球显示所选聊天实时并发。切换不会把旧表单写入另一个聊天。
+- 连接断开不再终止其他连接或活动任务。没有 MCP 连接和活动任务时，后台服务默认空闲 60 秒后退出；重连恢复对应聊天记录。
+- 没有聊天 ID 的全局发现连接只能发现工具和模型，不能执行任务。
+- 旧设置、API 配置、会话和账本保留。旧账本不自动分配到新聊天；新聊天仅继承旧用户策略作为初始值。
 
-v0.1.3 修复旧版覆盖安装时的 `CLI core initialization failed`。此前旧依赖链接保留下来，而新版依赖包目录已经改变，导致初始化被中止。现在安装器会验证并迁移同一安装目录内、属于同名依赖包的链接；失败时恢复原链接。普通目录、外部链接和不同包的链接不会被覆盖。
+**升级后重启 Codex，让连接加载新版入口。** 任务仍受预算和超时限制；需要立即停止时使用中断或关闭代理。并发上限和预算按聊天执行，当前没有跨聊天总上限。详情见 [多聊天连接](https://github.com/FocalorsQAQ/dsh-mcp/blob/main/docs/multi-chat.md)。
 
-已经遇到 v0.1.2 初始化错误的用户，可直接运行本版安装器修复。原有设置、API 配置和用户数据保留；不需要删除数据目录或重新输入密钥。初始化结果写入 `initialization-result.json`，详细错误也会进入 Setup Log。
+Version 0.1.4 fixes data-directory contention between simultaneous Codex chats
+and global tool discovery. Each chat now has one background service shared by
+its stdio connections, with independent tasks, queues, budgets and limits.
+API credentials and model settings remain shared. The desktop selector and
+floating orb follow the selected chat. Disconnecting a client preserves other
+connections and active tasks; idle services exit after 60 seconds by default.
+Restart Codex after upgrading. Old state is retained separately and never
+silently assigned to a chat. Discovery-only connections cannot execute tasks.
 
-Version 0.1.3 fixes `CLI core initialization failed` during upgrades. Verified
-links between managed packages are migrated to the new layout, with rollback if
-a replacement fails. Existing settings and user data are retained. This also
-repairs installations left in a mixed state by a failed v0.1.2 upgrade. Errors
-are recorded in `initialization-result.json` and the Setup Log.
+保留 v0.1.3 的悬浮球、双语言、Codex 同步打开窗口和旧版安装依赖链接修复。原有设置、API 配置和用户数据保留。
 
 Codex 加载 dsh 时仍会自动打开悬浮窗，复用已有窗口且不抢焦点。可用 `"ui_auto_start": false` 关闭自动打开。
 
@@ -29,13 +34,13 @@ English floating control window.
 
 源码采用 **MIT**。这是社区项目，不是 DeepSeek 或 OpenAI 官方产品。
 
-验证包含单元测试、真实 MCP 自动打开 Electron、重复打开与最小化保留、手动恢复、关闭自动打开，以及安装包内运行和卸载保留数据检查；测试不调用付费模型。
+验证覆盖单元测试、并行 MCP/SDK/CLI 本机模拟任务、活动任务跨断线、持久化重连、真实 Electron 聊天选择和共享配置、自动打开与悬浮球，以及安装升级/卸载保留数据。测试不调用付费模型。
 
 ### 下载与安装
 
-- `dsh-mcp-0.1.3-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
-- `dsh-mcp-0.1.3-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.3-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
+- `dsh-mcp-0.1.4-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
+- `dsh-mcp-0.1.4-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.4-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
 - `SHA256SUMS.txt` / `release-manifest.json`：哈希、版本与来源信息。
 
 **手动安装必须同时下载两个 ZIP，解压到同一空文件夹，再运行 `Initialize.cmd`。只下载程序 ZIP 或源码不能直接运行。**

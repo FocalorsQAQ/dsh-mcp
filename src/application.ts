@@ -2,7 +2,7 @@ import type { Config } from './config.ts';
 import { createBackendFactory } from './backend.ts';
 import { AgentManager } from './manager.ts';
 import { createServer } from './server.ts';
-import type { BackendFactory, DeliveryTransport } from './types.ts';
+import { DshError, type BackendFactory, type DeliveryTransport } from './types.ts';
 
 /** Trusted UI/host API, deliberately not registered as model-facing MCP tools. */
 export function createApplication(config: Config, backend: BackendFactory = createBackendFactory(config), deliver?: DeliveryTransport) {
@@ -17,13 +17,25 @@ export function createApplication(config: Config, backend: BackendFactory = crea
     refreshModels: () => controls.refreshModels(),
     subscribe: (listener: (value: ReturnType<typeof snapshot>) => void) => manager.subscribe(() => listener(snapshot())),
   };
-  return { ui, createMcpServer: () => createServer(manager), close: () => manager.shutdown() };
+  const discoveryMethods = new Set(['list', 'read', 'wait', 'listModel', 'listEffort', 'listDeliveries']);
+  return { ui, createMcpServer: (discovery = false) => createServer(discovery ? new Proxy(manager, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target);
+      if (typeof value !== 'function') return value;
+      return (...args: unknown[]) => {
+        if (!discoveryMethods.has(String(key))) throw new DshError('SESSION_REQUIRED', 'This connection is for tool discovery. Start a chat-bound connection with CODEX_THREAD_ID or --session-id.');
+        return Reflect.apply(value, target, args);
+      };
+    },
+  }) : manager, discovery ? 'Catalog connection only; task execution requires a chat-bound MCP connection. ' :
+    config.codex_thread_id ? 'Chat binding: ' + config.codex_thread_id + '. Tasks, queues and budgets are isolated to this chat. ' : ''), close: () => manager.shutdown() };
 }
 
 export type DshApplication = ReturnType<typeof createApplication>;
 export type DshControlApi = DshApplication['ui'];
 export type DshControlSnapshot = ReturnType<DshControlApi['snapshot']>;
 export { loadConfig } from './config.ts';
+export { listSessions, sessionDirectory } from './sessions.ts';
 export type { Config } from './config.ts';
 export { policySchema, policyPatchSchema, moneySchema } from './control-contract.ts';
 export type { ControlPolicy, Money, AgentPolicyView, TokenUsage } from './control-contract.ts';

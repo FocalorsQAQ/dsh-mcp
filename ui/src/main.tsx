@@ -11,6 +11,7 @@ import { FloatingOrb } from './floating-orb';
 import './style.css';
 import './density.css';
 import './language.css';
+import './sessions.css';
 
 const blank: DesktopState = { connection: { status: 'connecting', workspace_name: t("workspace.current"), workspace_root: '', snapshot: null, message: t("connection.connecting") }, window: { compact: false, floating: false } };
 const defaults: ControlPolicy = { enabled: false, max_root_agents: 4, allow_secondary: false, max_depth_user: 1,
@@ -93,7 +94,7 @@ function App() {
     if (busy.current || current.current.connection.status !== 'connected') return;
     busy.current = true; setSaving(true); setNotice(null);
     try {
-      const result = await window.dsh.updateSettings(patch, current.current.connection.snapshot!.revision);
+      const result = await window.dsh.updateSettings(patch, current.current.connection.snapshot!.revision, current.current.session_id);
       if (result.ok) setState(result.value);
       else {
         setNotice({ key: 'error.' + result.code, error: true });
@@ -117,7 +118,19 @@ function App() {
       </div>
     </header>
 
-    <main>
+    {(state.sessions ?? []).some(item => item.id !== 'legacy') && <div className="session-picker">
+      <label htmlFor="chat-session">{t('session.select')}</label>
+      <select id="chat-session" value={state.session_id} disabled={saving} onChange={async event => {
+        const result = await window.dsh.selectSession(event.target.value);
+        if (result.ok) { setNotice(null); setState(result.value); }
+        else setNotice({ key: 'error.' + result.code, error: true });
+      }}>
+        {state.sessions?.map(item => <option key={item.id} value={item.id} title={item.id}>
+          {item.id === 'legacy' ? t('session.legacy') : t('session.chat', { id: item.id.slice(0, 8) }) + ' · ' + item.workspace.split(/[\\/]/).at(-1)}
+        </option>)}
+      </select>
+    </div>}
+    <main key={state.session_id}>
       <section className={'hero ' + (settings.enabled && connected ? 'enabled' : '')}>
         <div className="hero-line"><div className="hero-heading"><span className="hero-symbol"><Icon name="agents" size={23} /></span><div><h1>{!connected ? t("connection.waitTitle") : settings.enabled ? t("outsourcing.enabled") : t("outsourcing.disabled")}</h1><p>{!connected ? t("connection.syncHint") : settings.enabled ? t("outsourcing.enabledHint") : t("outsourcing.disabledHint")}</p></div></div><Toggle label={t("outsourcing.enable")}  checked={settings.enabled && connected} disabled={unavailable} onChange={enabled => void apply({ enabled })} /></div>
         <div className="hero-status"><span className={'connection-indicator ' + connection.status}><span className="dot" />{connected ? t("connection.connected") : connection.status === 'connecting' ? t("connection.pending") : t("connection.disconnected")}</span><span className="status-separator" /><span>{snapshot ? t("runtime.active", { count: snapshot.runtime.active_root_count, limit: settings.max_root_agents }) : t("agents.waiting")}</span><button className="inline-icon" aria-label={t("connection.reconnect")}  title={t("connection.reconnectHint")}  onClick={() => void window.dsh.reconnect()}><Icon name="refresh" size={13} /></button></div>

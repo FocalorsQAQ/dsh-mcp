@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { app, BrowserWindow, ipcMain, screen, safeStorage } from 'electron';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../dist/config.js';
@@ -12,10 +12,11 @@ import { createApiWindow } from './api-window.mjs';
 import { createModelWindow } from './model-window.mjs';
 import { CredentialRegistry } from '../dist/credentials.js';
 import { languages, startupLocale, translate } from './localization.mjs';
+import { listSessions, sessionDirectory } from '../dist/sessions.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({ args: process.argv.slice(2), options: {
-  config: { type: 'string' }, workspace: { type: 'string' }, 'data-dir': { type: 'string' }, 'api-keys': { type: 'boolean' }, models: { type: 'boolean' }, 'auto-start': { type: 'boolean' },
+  config: { type: 'string' }, workspace: { type: 'string' }, 'data-dir': { type: 'string' }, 'session-id': { type: 'string' }, 'api-keys': { type: 'boolean' }, models: { type: 'boolean' }, 'auto-start': { type: 'boolean' },
 }, strict: false, allowPositionals: true });
 const autoStart = values['auto-start'] === true;
 const config = loadConfig(values.config ?? (autoStart ? undefined : join(root, 'dsh.config.json')), { workspace: values.workspace, dataDir: values['data-dir'] });
@@ -51,10 +52,42 @@ let controlClosing = false;
 const orbSize = 72;
 let compact = false;
 let fullHeight = 840;
-const client = new UiClient(config.data_dir, config.workspace_root);
-const state = () => ({ connection: client.snapshot(), window: { compact, floating } });
+function readSessions() {
+  const entries = listSessions(config.data_dir).map(({ id, workspace, created_at }) => ({ id, workspace, created_at }));
+  if (existsSync(join(config.data_dir, 'state.json')) || existsSync(join(config.data_dir, 'ui-endpoint.json'))) {
+    entries.push({ id: 'legacy', workspace: config.workspace_root, created_at: '' });
+  }
+  return entries;
+}
+let sessions = readSessions();
+const preferredSession = values['session-id'] ?? preferences.session_id;
+let sessionId = sessions.some(item => item.id === preferredSession) ? preferredSession : sessions[0]?.id ?? 'legacy';
+function sessionClient(id) {
+  return new UiClient(id === 'legacy' ? config.data_dir : sessionDirectory(config.data_dir, id),
+    sessions.find(item => item.id === id)?.workspace ?? config.workspace_root);
+}
+let client = sessionClient(sessionId);
+const state = () => ({ connection: client.snapshot(), session_id: sessionId, sessions, window: { compact, floating } });
 const publish = () => { for (const target of [window, orbWindow]) if (target && !target.isDestroyed() && !target.webContents.isLoadingMainFrame()) target.webContents.send('dsh:state', state()); };
-client.subscribe(publish);
+let unsubscribeClient = client.subscribe(publish);
+function selectSession(id) {
+  if (!sessions.some(item => item.id === id)) throw { code: 'UI_SESSION' };
+  if (id !== sessionId) {
+    unsubscribeClient(); client.close(); sessionId = id; client = sessionClient(id);
+    unsubscribeClient = client.subscribe(publish); client.reconnect();
+  }
+  savePreferences({ ...preferences, session_id: id }); publish(); return state();
+}
+const catalogTimer = setInterval(() => {
+  try {
+    const next = readSessions();
+    if (JSON.stringify(next) === JSON.stringify(sessions)) return;
+    sessions = next;
+    if (!sessions.some(item => item.id === sessionId) && sessions.length) selectSession(sessions[0].id);
+    else publish();
+  } catch { /* A bad entry must not interrupt the selected chat. */ }
+}, 1000);
+catalogTimer.unref();
 
 function acceptsControl(event) {
   return [window, orbWindow].some(target => target && !target.isDestroyed() && event.sender === target.webContents &&
@@ -71,13 +104,14 @@ const handler = (name, action) => ipcMain.handle(name, async (event, ...args) =>
   catch (error) { return { ok: false, code: error?.code ?? 'UI_REQUEST', message: friendlyError(error?.code) }; }
 });
 function friendlyError(code) { return t('error.' + code); }
-const credentials = new CredentialRegistry(join(config.data_dir, 'credentials.json'), {
+const modelDirectory = config.model_config_dir ?? config.data_dir;
+const credentials = new CredentialRegistry(join(modelDirectory, 'credentials.json'), {
   available: () => process.platform === 'linux' ? Promise.resolve(false) : safeStorage.isAsyncEncryptionAvailable(),
   encrypt: value => safeStorage.encryptStringAsync(value),
   decrypt: async value => (await safeStorage.decryptStringAsync(value)).result,
 });
 const apiWindow = createApiWindow({ root, registry: credentials, locale: () => locale, translate: t, parent: () => window });
-const modelWindow = createModelWindow({ root, dataDir: config.data_dir, credentials, locale: () => locale, translate: t, parent: () => window });
+const modelWindow = createModelWindow({ root, dataDir: modelDirectory, credentials, locale: () => locale, translate: t, parent: () => window });
 
 // Language is a local UI preference, independent of the MCP service and provider settings.
 const languageHandler = (name, action) => ipcMain.handle(name, (event, ...args) => {
@@ -100,9 +134,13 @@ languageHandler('dsh:language:set', value => {
 });
 
 handler('dsh:state:get', () => state());
+handler('dsh:sessions:select', id => selectSession(id));
 handler('dsh:settings:update', async (input) => {
-  const command = settingsCommandSchema.parse(input);
-  await client.updateSettings(command.patch, command.expected_revision); return state();
+  const { session_id, ...settings } = input;
+  if (session_id !== undefined && session_id !== sessionId) throw { code: 'UI_SESSION' };
+  const command = settingsCommandSchema.parse(settings);
+  const target = client;
+  await target.updateSettings(command.patch, command.expected_revision); return state();
 });
 handler('dsh:window:intent', async (input) => {
   const command = windowIntentSchema.parse(input);
@@ -196,6 +234,8 @@ else {
   app.on('second-instance', (_event, argv, _directory, additionalData) => {
     // Reconnecting MCP clients must not restore minimized windows or steal focus.
     if (additionalData?.autoStart === true || argv.includes('--auto-start')) return;
+    const index = argv.indexOf('--session-id');
+    if (index >= 0 && sessions.some(item => item.id === argv[index + 1])) selectSession(argv[index + 1]);
     if (window) { restoreControl(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); }
   });
   app.whenReady().then(async () => {
@@ -232,4 +272,4 @@ else {
   }).catch(error => { process.stderr.write('[dsh UI] ' + error.message + '\n'); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => client.close());
+app.on('before-quit', () => { clearInterval(catalogTimer); unsubscribeClient(); client.close(); });

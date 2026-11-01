@@ -11,6 +11,7 @@ const configSchema = z.object({
   workspace_root: z.string().default('.'),
   data_dir: z.string().default('.dsh-mcp'),
   ui_auto_start: z.boolean().default(process.platform === 'win32'),
+  session_idle_timeout_ms: z.number().int().min(1000).max(1800000).default(60000),
   model_config_dir: z.string().optional(),
   model: z.string().min(1).default('deepseek-v4-flash'),
   provider: z.string().min(1).default('deepseek-official'),

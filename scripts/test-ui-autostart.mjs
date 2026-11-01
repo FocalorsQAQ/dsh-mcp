@@ -16,7 +16,7 @@ const directory = mkdtempSync(join(output, 'run-'));
 const workspace = join(directory, 'workspace with spaces'); mkdirSync(workspace);
 const data = join(directory, 'overridden data');
 const configPath = join(directory, 'config.json');
-const config = { workspace_root: workspace, data_dir: join(directory, 'unused-data'), completion_delivery: { mode: 'off' } };
+const config = { workspace_root: workspace, data_dir: join(directory, 'unused-data'), session_idle_timeout_ms: 1500, completion_delivery: { mode: 'off' } };
 if (process.env.DSH_RELEASE_ROOT) config.billing = { python: join(runtime, 'bin/python/python.exe'), rules: join(runtime, 'billing/rules.py') };
 writeFileSync(configPath, JSON.stringify(config));
 const exec = promisify(execFile);
@@ -36,7 +36,7 @@ async function until(predicate) {
   }
   throw new Error('Timed out waiting for the control window: ' + JSON.stringify(state));
 }
-const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_UI_LOCALE: 'en-US' };
+const env = { ...process.env, CODEX_THREAD_ID: '30000000-0000-4000-8000-000000000003', ELECTRON_RUN_AS_NODE: '1', DSH_UI_LOCALE: 'en-US' };
 delete env.DEEPSEEK_API_KEY;
 const transport = new StdioClientTransport({ command: node,
   args: [join(runtime, 'packaging/launch-server.mjs'), '--config', configPath, '--data-dir', data], env, stderr: 'pipe' });
@@ -63,6 +63,7 @@ try {
   const pid = first[0].pid;
   assert.equal(first[0].focused, false, 'Automatic launch must not take keyboard focus.');
   assert(existsSync(join(data, 'desktop')), 'UI must use the effective MCP data directory.');
+  assert(existsSync(join(data, 'chats', env.CODEX_THREAD_ID, 'state.json')), 'Automatic UI launch must use the isolated chat host.');
   assert(!existsSync(join(config.data_dir, 'desktop')), 'Config overrides must reach Electron.');
   await inspect('minimize');
   await until(state => state[0]?.minimized);

@@ -18,6 +18,8 @@ async function main(): Promise<void> {
   if (values.help) {
     process.stdout.write('dsh-mcp [--config path.json] [--workspace directory] [--data-dir directory]\n' +
       'Starts the dsh MCP server over stdio. Diagnostics go to stderr.\n' +
+      'The default packaging/launch-server.mjs entry shares a service per CODEX_THREAD_ID or --session-id UUID.\n' +
+      'Without a chat ID it provides discovery only; --single-session retains exclusive single-client behavior.\n' +
       'dsh-mcp --doctor   Print local configuration and dependency status, without calling a model.\n');
     return;
   }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "license": "MIT",
   "author": "FocalorsQAQ",
@@ -45,7 +45,7 @@
     }
   },
   "bin": {
-    "dsh-mcp": "dist/cli.js"
+    "dsh-mcp": "packaging/launch-server.mjs"
   },
   "engines": {
     "node": ">=24.9.0"
@@ -53,7 +53,7 @@
   "packageManager": "pnpm@11.25.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/cli.js",
+    "start": "node packaging/launch-server.mjs",
     "dev": "node --experimental-transform-types src/cli.ts",
     "test": "node --experimental-transform-types --test tests/*.test.ts",
     "check": "tsc --noEmit -p tsconfig.json",
@@ -66,6 +66,8 @@
     "test:ui": "node scripts/test-ui.mjs",
     "test:ui-autostart": "node scripts/test-ui-autostart.mjs",
     "test:orb-ui": "node scripts/test-orb-ui.mjs",
+    "test:multi-client": "node scripts/test-multi-client.mjs",
+    "test:session-ui": "node scripts/test-session-ui.mjs",
     "test:i18n-ui": "node scripts/test-i18n-ui.mjs",
     "test:api-ui": "node scripts/test-api-ui.mjs",
     "test:model-ui": "node scripts/test-model-ui.mjs",

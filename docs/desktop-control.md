@@ -38,14 +38,20 @@ node scripts/start-ui.mjs
 node scripts/start-ui.mjs --config D:/path/to/dsh.config.json
 ```
 
-控制窗与 MCP 必须使用相同的配置和 `data_dir`。MCP 启动配置仍使用 `dist/cli.js`，无需把 Electron 配置成 MCP 命令。更新代码后需要重启已有 dsh MCP 进程，让它加载新的 UI 连接服务；`config/codex.toml` 是现有接入样例。
+控制窗与 MCP 必须使用相同的配置和根 `data_dir`。MCP 启动配置使用 `packaging/launch-server.mjs`，无需把 Electron 配置成 MCP 命令。更新代码后需要重启已有 dsh MCP 连接，让它加载新的 UI 连接服务；`config/codex.toml` 是现有接入样例。
 
 **窗口可以先打开。** 没有运行中的 dsh 服务时显示“等待服务连接”，禁用设置修改；MCP 启动后自动连接。关闭窗口仅退出 UI，不关闭 MCP 或代理；MCP 退出时窗口保留上次数据并明确标记已断开，自动等待重连。不会为了打开界面启动第二个代理管理器，也不会自动执行模型任务。
+
+## 聊天选择
+
+v0.1.4 起，标题栏下方的“当前聊天”可选择已连接过的聊天，标签显示聊天 UUID 前八位和工作区名称。每个聊天的任务、队列、预算、花费、并发上限和外包开关独立；API 密钥和模型管理窗口共用根目录配置。切换时重新建立所选聊天的控制订阅，旧聊天的未提交表单不会写入新聊天；服务端也校验提交对应的聊天及设置版本。
+
+已有界面不会因另一聊天接入而自动切换或抢焦点。窗口记住手动选择。离线聊天仍保留目录记录，连接恢复后自动更新；旧版根目录状态显示为“升级前的会话”，不会自动合并到新聊天。此目录列表仅包含非密钥元数据，UI 继续通过控制 API 操作任务设置。详见 [多聊天连接](multi-chat.md)。
 
 ## 悬浮球
 
 从 v0.1.3 开始，标题栏的最小化按钮会收起面板，显示一个约 60 像素直径的悬浮球。
-数字直接使用服务端 `runtime.active_count`，表示当前占用并发槽位的全部代理，包含二次外包。
+数字直接使用所选聊天服务端的 `runtime.active_count`，表示该聊天占用并发槽位的全部代理，包含二次外包。
 鼠标悬停可查看当前数量与并发上限。服务断线时显示 `—` 和离线标记，避免把旧数字当作实时状态。
 
 拖动球可以移动并记住位置；点击或用键盘激活可展开面板，保留原来的内容、尺寸和紧凑模式。
@@ -53,7 +59,7 @@ node scripts/start-ui.mjs --config D:/path/to/dsh.config.json
 这只改变界面显示，任务、队列和预算继续运行。悬浮球与面板共享同一个控制连接。
 
 The minimize button collapses the panel into a small floating orb showing live
-total concurrency, including delegated child agents. Drag to move, click to
+concurrency in the selected chat, including delegated child agents. Drag to move, click to
 restore the panel. Position is saved, disconnected counts show a dash, and
 existing tasks continue. The orb supports both interface languages.
 
@@ -61,7 +67,7 @@ existing tasks continue. The orb supports both interface languages.
 
 | 控件 | 行为 |
 | --- | --- |
-| 启用外包 | 即时更新 `enabled`，影响 MCP 的整个工具组。关闭后仍可在窗口重新开启。 |
+| 启用外包 | 即时更新所选聊天的 `enabled`，影响该聊天 MCP 的整个工具组。关闭后仍可在窗口重新开启。 |
 | 顶层代理数量 | 按同时运行数设置；支持步进按钮和直接输入，Enter 或移开焦点保存。 |
 | 允许二次外包 | 用户授权开关；实际执行还需要模型的深度授权。 |
 | 最大外包深度 / 子代理上限 | 对应 `max_depth_user` / `max_children_user`；禁止二次外包时暂时禁用这两个控件并保留原值。 |
@@ -87,7 +93,7 @@ React 控制界面
   → 与 MCP 共用的 ControlPlane / AgentManager
 ```
 
-`src/cli.ts` 在现有应用实例上启动 `startUiBridge`。连接只监听 `127.0.0.1` 的随机端口；每次启动产生独立认证令牌，通过数据目录中的 `ui-endpoint.json` 供本机客户端发现。令牌留在 Electron 主进程，不传给页面，不打印到日志。关闭服务时删除自己的发现文件。
+`src/multi-client.ts` 在每个聊天的应用实例上启动 `startUiBridge`（单连接兼容模式由 `src/cli.ts` 启动）。连接只监听 `127.0.0.1` 的随机端口；每次启动产生独立认证令牌，通过聊天目录中的 `ui-endpoint.json` 供本机客户端发现。令牌留在 Electron 主进程，不传给页面，不打印到日志。关闭服务时删除自己的发现文件。
 
 界面不会直接读写 `state.json`。控制端点未注册为模型工具，拒绝带浏览器 Origin 的访问；写入需要版本校验。页面禁用 Node 集成，开启上下文隔离与 renderer sandbox，只加载打包的本地文件；禁止导航、弹窗和权限请求，并校验 IPC 来源。
 
@@ -103,6 +109,8 @@ React 控制界面
 | `POST /v1/window-intent` | `{window:"api_keys"}` 或 `{window:"models"}` |
 
 所有请求均需本机发现文件的 Bearer 凭据；禁止重定向。`UiClient` 负责连接、订阅、重连和错误处理，可通过 `dsh-mcp/ui-client` 复用；不要将其发现令牌交给普通网页。原来的框架无关 `DshControlApi` 仍可直接嵌入其他可信宿主。
+
+自定义宿主可从 `dsh-mcp` 导出入口使用 `listSessions(baseDataDir)` 获取聊天目录元数据，再用 `sessionDirectory(baseDataDir, id)` 取得对应路径，交给 `UiClient`。根目录与聊天目录分开传递，API/模型管理继续使用共享 `model_config_dir`（默认根目录）。
 
 ## 个性化和测试
 
@@ -120,9 +128,11 @@ pnpm test
 pnpm run test:ui
 pnpm run test:ui-autostart
 pnpm run test:orb-ui
+pnpm run test:multi-client
+pnpm run test:session-ui
 pnpm run smoke
 ```
 
 界面测试会打开真实 Electron 窗口，使用隔离项目和模拟后端，逐项操作控件，并验证 MCP 工具列表同步变化、费用和 token 推送、紧凑模式及断线状态。截图和报告在 `.test-output/ui/run-*/`；这些是测试数据，不是用户实际消费。普通测试不调用真实模型 API。
 
-当前提供源码运行版本，尚未制作安装包或自动更新器。
+提供 Windows x64 安装包及源码运行方式；当前没有自动更新器。

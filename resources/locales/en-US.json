@@ -200,5 +200,9 @@
   "orb.active": "Active",
   "orb.offline": "Offline",
   "orb.tooltip": "{count} / {limit} active agents, including subagents. Click to expand; drag to move.",
-  "orb.disconnected": "Service disconnected. Click to expand; drag to move."
+  "orb.disconnected": "Service disconnected. Click to expand; drag to move.",
+  "session.select": "Current chat",
+  "session.chat": "Chat {id}",
+  "session.legacy": "Session before upgrade",
+  "error.UI_SESSION": "The chat changed or is unavailable. Please review the action again."
 }
