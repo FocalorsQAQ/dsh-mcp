@@ -32,7 +32,7 @@ def replace_checked(path, before, after):
         Path(temporary).unlink(missing_ok=True)
 
 
-def register(root, home):
+def register_mcp(root, home):
     home.mkdir(parents=True, exist_ok=True)
     path = home / 'config.toml'
     if path.is_symlink():
@@ -58,7 +58,7 @@ def register(root, home):
     return {'status': 'registered', 'config': str(path)}
 
 
-def unregister(root):
+def unregister_mcp(root):
     receipt_path = root / 'codex-registration.json'
     if not receipt_path.exists():
         return {'status': 'not_owned'}
@@ -76,6 +76,63 @@ def unregister(root):
     parse(after)
     replace_checked(path, before, after)
     return {'status': 'removed'}
+
+
+def hook_command(root):
+    # Codex uses PowerShell for Windows command hooks. Single-quote each literal.
+    quote = lambda value: "'" + str(value).replace("'", "''") + "'"
+    return '& ' + ' '.join(map(quote, [root / 'bin/node/node.exe', root / 'packaging/prompt-hook.mjs', '--config', root / 'dsh.config.json']))
+
+
+def register_hook(root, home):
+    path = home / 'config.toml'
+    before = path.read_bytes() if path.exists() else b''
+    if path.is_symlink():
+        raise ValueError('Linked config requires manual setup')
+    command = hook_command(root)
+    groups = parse(before).get('hooks', {}).get('UserPromptSubmit', [])
+    for group in groups:
+        for hook in group.get('hooks', []):
+            if hook.get('command') == command:
+                return 'registered_review_required'
+    block = '\n# BEGIN dsh task snapshot hook\n[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = "command"\ncommand = ' + json.dumps(command) + '\ntimeout = 15\nstatusMessage = "Saving dsh task settings"\n# END dsh task snapshot hook\n'
+    after = before + block.encode('utf-8')
+    parse(after)
+    (root / 'codex-hook-registration.json').write_text(json.dumps({'config': str(path), 'block': block}), encoding='utf-8')
+    replace_checked(path, before, after)
+    return 'registered_review_required'
+
+
+def unregister_hook(root):
+    receipt = root / 'codex-hook-registration.json'
+    if not receipt.exists():
+        return 'not_owned'
+    saved = json.loads(receipt.read_text(encoding='utf-8'))
+    path = Path(saved['config'])
+    if not path.exists() or path.is_symlink():
+        return 'changed_preserved'
+    before = path.read_bytes()
+    block = saved['block'].encode('utf-8')
+    if before.count(block) != 1:
+        return 'changed_preserved'
+    after = before.replace(block, b'', 1)
+    parse(after)
+    replace_checked(path, before, after)
+    return 'removed'
+
+
+def register(root, home):
+    result = register_mcp(root, home)
+    if result['status'] != 'conflict':
+        result['hook'] = register_hook(root, home)
+    return result
+
+
+def unregister(root):
+    hook = unregister_hook(root)
+    result = unregister_mcp(root)
+    result['hook'] = hook
+    return result
 
 
 def main():

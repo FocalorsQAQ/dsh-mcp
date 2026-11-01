@@ -6,15 +6,13 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../dist/config.js';
-import { UiClient } from '../dist/ui-client.js';
+import { Dashboard } from '../dist/dashboard.js';
 import { settingsCommandSchema, windowIntentSchema } from '../dist/ui-protocol.js';
 import { createApiWindow } from './api-window.mjs';
 import { createModelWindow } from './model-window.mjs';
 import { CredentialRegistry } from '../dist/credentials.js';
 import { languages, startupLocale, translate } from './localization.mjs';
-import { listSessions, sessionDirectory } from '../dist/sessions.js';
-import { OutsourcingSwitch, outsourcingCommandSchema } from '../dist/global-control.js';
-import { readChatNames } from '../dist/chat-names.js';
+import { outsourcingCommandSchema } from '../dist/global-control.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({ args: process.argv.slice(2), options: {
@@ -22,7 +20,7 @@ const { values } = parseArgs({ args: process.argv.slice(2), options: {
 }, strict: false, allowPositionals: true });
 const autoStart = values['auto-start'] === true;
 const config = loadConfig(values.config ?? (autoStart ? undefined : join(root, 'dsh.config.json')), { workspace: values.workspace, dataDir: values['data-dir'] });
-const globalControl = new OutsourcingSwitch(config.control_config_dir ?? config.data_dir, config.billing.python, config.control.enabled);
+const dashboard = new Dashboard(config);
 const uiHome = join(config.data_dir, 'desktop');
 mkdirSync(uiHome, { recursive: true });
 app.setPath('userData', uiHome);
@@ -55,44 +53,9 @@ let controlClosing = false;
 const orbSize = 72;
 let compact = false;
 let fullHeight = 840;
-function readSessions() {
-  const entries = listSessions(config.data_dir).map(({ id, workspace, created_at }) => ({ id, workspace, created_at }));
-  if (existsSync(join(config.data_dir, 'state.json')) || existsSync(join(config.data_dir, 'ui-endpoint.json'))) {
-    entries.push({ id: 'legacy', workspace: config.workspace_root, created_at: '' });
-  }
-  const names = readChatNames(entries.map(item => item.id), config.codex_home);
-  return entries.map(item => ({ ...item, title: names.get(item.id) ?? null }));
-}
-let sessions = readSessions();
-const preferredSession = values['session-id'] ?? preferences.session_id;
-let sessionId = sessions.some(item => item.id === preferredSession) ? preferredSession : sessions[0]?.id ?? 'legacy';
-function sessionClient(id) {
-  return new UiClient(id === 'legacy' ? config.data_dir : sessionDirectory(config.data_dir, id),
-    sessions.find(item => item.id === id)?.workspace ?? config.workspace_root);
-}
-let client = sessionClient(sessionId);
-const state = () => ({ connection: client.snapshot(), global_control: globalControl.status(), session_id: sessionId, sessions, window: { compact, floating } });
+const state = () => ({ ...dashboard.snapshot(), window: { compact, floating } });
 const publish = () => { for (const target of [window, orbWindow]) if (target && !target.isDestroyed() && !target.webContents.isLoadingMainFrame()) target.webContents.send('dsh:state', state()); };
-let unsubscribeClient = client.subscribe(publish);
-const unsubscribeGlobal = globalControl.subscribe(publish);
-function selectSession(id) {
-  if (!sessions.some(item => item.id === id)) throw { code: 'UI_SESSION' };
-  if (id !== sessionId) {
-    unsubscribeClient(); client.close(); sessionId = id; client = sessionClient(id);
-    unsubscribeClient = client.subscribe(publish); client.reconnect();
-  }
-  savePreferences({ ...preferences, session_id: id }); publish(); return state();
-}
-const catalogTimer = setInterval(() => {
-  try {
-    const next = readSessions();
-    if (JSON.stringify(next) === JSON.stringify(sessions)) return;
-    sessions = next;
-    if (!sessions.some(item => item.id === sessionId) && sessions.length) selectSession(sessions[0].id);
-    else publish();
-  } catch { /* A bad entry must not interrupt the selected chat. */ }
-}, 1000);
-catalogTimer.unref();
+dashboard.subscribe(publish);
 
 function acceptsControl(event) {
   return [window, orbWindow].some(target => target && !target.isDestroyed() && event.sender === target.webContents &&
@@ -141,22 +104,18 @@ languageHandler('dsh:language:set', value => {
 handler('dsh:state:get', () => state());
 handler('dsh:outsourcing:set', input => {
   const command = outsourcingCommandSchema.parse(input);
-  globalControl.setEnabled(command.enabled, command.expected_revision); publish(); return state();
+  dashboard.updateSettings({ enabled: command.enabled }, command.expected_revision); publish(); return state();
 });
-handler('dsh:sessions:select', id => selectSession(id));
-handler('dsh:settings:update', async (input) => {
-  const { session_id, ...settings } = input;
-  if (session_id !== undefined && session_id !== sessionId) throw { code: 'UI_SESSION' };
-  const command = settingsCommandSchema.parse(settings);
-  const target = client;
-  await target.updateSettings(command.patch, command.expected_revision); return state();
+handler('dsh:settings:update', input => {
+  const command = settingsCommandSchema.parse(input);
+  dashboard.updateSettings(command.patch, command.expected_revision); publish(); return state();
 });
 handler('dsh:window:intent', async (input) => {
   const command = windowIntentSchema.parse(input);
   if (command.window === 'api_keys') { await apiWindow.open(); return { window: 'api_keys', implemented: true }; }
   await modelWindow.open(); return { window: 'models', implemented: true };
 });
-handler('dsh:reconnect', () => { client.reconnect(); return state(); });
+handler('dsh:reconnect', () => { dashboard.refresh(); return state(); });
 function attachOwner(target) {
   if (process.platform !== 'win32') return;
   const hwnd = target.getNativeWindowHandle().readBigUInt64LE().toString();
@@ -243,8 +202,6 @@ else {
   app.on('second-instance', (_event, argv, _directory, additionalData) => {
     // Reconnecting MCP clients must not restore minimized windows or steal focus.
     if (additionalData?.autoStart === true || argv.includes('--auto-start')) return;
-    const index = argv.indexOf('--session-id');
-    if (index >= 0 && sessions.some(item => item.id === argv[index + 1])) selectSession(argv[index + 1]);
     if (window) { restoreControl(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); }
   });
   app.whenReady().then(async () => {
@@ -277,8 +234,8 @@ else {
     await window.loadFile(rendererPath);
     if (values['api-keys']) await apiWindow.open();
     if (values.models) await modelWindow.open();
-    client.reconnect();
+    dashboard.start();
   }).catch(error => { process.stderr.write('[dsh UI] ' + error.message + '\n'); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { clearInterval(catalogTimer); unsubscribeClient(); unsubscribeGlobal(); client.close(); });
+app.on('before-quit', () => dashboard.close());

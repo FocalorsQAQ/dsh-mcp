@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createConnection } from 'node:net';
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -18,6 +19,15 @@ const A = '10000000-0000-4000-8000-000000000001', B = '20000000-0000-4000-8000-0
 writeFileSync(configPath, JSON.stringify({ workspace_root: directory, data_dir: data, ui_auto_start: false,
   session_idle_timeout_ms: 1500, completion_delivery: { mode: 'off' },
   ...(process.env.DSH_RELEASE_ROOT ? { billing: { python: join(runtime, 'bin/python/python.exe'), rules: join(runtime, 'billing/rules.py') } } : {}) }));
+const { loadConfig } = await import(pathToFileURL(join(runtime,'dist/config.js')));
+const { TaskSnapshots } = await import(pathToFileURL(join(runtime,'dist/task-snapshot.js')));
+const { OutsourcingSwitch } = await import(pathToFileURL(join(runtime,'dist/global-control.js')));
+const cfg=loadConfig(configPath), snapshots=new TaskSnapshots(cfg), gate=new OutsourcingSwitch(data,cfg.billing.python,cfg.control);
+const turns={ [A]:randomUUID(), [B]:randomUUID() }, identities=new WeakMap();
+for(const [id,amount] of [[A,1000],[B,3000]]) {
+  gate.updateSettings({round_budget:[0,amount],task_budget:[0,amount+1000],billing_currency:'CNY'},gate.snapshot().revision);
+  snapshots.capture(id,turns[id],directory);
+}
 let requests = 0, releaseHeld;
 const mock = createServer(async (req, res) => {
   let body = ''; for await (const part of req) body += part; requests++;
@@ -48,10 +58,11 @@ async function connect(id) {
     args: [join(runtime, 'packaging/launch-server.mjs'), '--config', configPath], env, stderr: 'pipe' });
   transport.stderr?.on('data', chunk => { diagnostics += chunk; });
   await client.connect(transport, { timeout: 20000 });
-  return client;
+  if(id) identities.set(client,id); return client;
 }
 async function call(client, name, args = {}, meta) {
-  const result = await client.callTool({ name, arguments: args, ...(meta ? { _meta: meta } : {}) });
+  const id = meta?.threadId ?? meta?.thread_id ?? (meta?.['x-codex-turn-metadata'] ? JSON.parse(meta['x-codex-turn-metadata']).threadId : identities.get(client));
+  const result = await client.callTool({ name, arguments: args, ...((meta || id) ? { _meta: { ...(id ? {turn_id:turns[id]} : {}), ...meta } } : {}) });
   const value = result.structuredContent ?? JSON.parse(result.content[0].text);
   assert(!result.isError, JSON.stringify(value)); return value;
 }
@@ -89,8 +100,6 @@ try {
   assert.equal((await call(catalog, 'list_agents', {}, { 'x-codex-turn-metadata': JSON.stringify({ threadId: A }) })).control.chat_id, A);
   assert.equal(requests, 0);
   const [uiA, uiB] = await Promise.all([ui(A), ui(B)]);
-  await uiA.updateSettings({ round_budget: [0, 1000], task_budget: [0, 2000], billing_currency: 'CNY' }, uiA.snapshot().snapshot.revision);
-  await uiB.updateSettings({ round_budget: [0, 3000], task_budget: [0, 4000], billing_currency: 'CNY' }, uiB.snapshot().snapshot.revision);
   assert.notEqual(uiA.snapshot().snapshot.task_id, uiB.snapshot().snapshot.task_id);
   const agentA = (await call(catalog, 'spawn_agent', { task_name: 'same_name', message: 'Reply with a short answer. Do not use tools.' }, { threadId: A })).agent;
   await until(() => completed(a2, agentA.id));
@@ -99,19 +108,15 @@ try {
   assert.equal((await b.callTool({ name: 'read_agent', arguments: { target: agentA.id } })).isError, true);
   await until(() => uiA.snapshot().snapshot.metrics.task_cost[1] > 0);
   assert.deepEqual(uiB.snapshot().snapshot.metrics.task_cost, [0, 0]);
-  const policyA = JSON.parse((await catalog.readResource({ uri: 'dsh://control/status', _meta: { threadId: A } })).contents[0].text);
+  const policyA = JSON.parse((await catalog.readResource({ uri: 'dsh://control/status', _meta: { threadId: A, turn_id:turns[A] } })).contents[0].text);
   assert.equal(policyA.chat_id, A); assert.deepEqual(policyA.budget, [0, 1000]);
-  await uiB.setOutsourcingEnabled(false, uiB.snapshot().snapshot.global_control.state.revision);
-  assert.equal((await catalog.callTool({ name: 'spawn_agent', arguments: { task_name: 'disabled', message: 'Must not run' }, _meta: { threadId: B } })).isError, true);
-  assert((await catalog.callTool({ name: 'list_agents', arguments: {}, _meta: { threadId: A } })).isError);
-  for (const client of [a1, a2, b, catalog]) {
-    assert.equal((await client.listTools()).tools.length, 18);
-    assert.equal((await call(client, 'get_status')).enabled, false);
-  }
-  const disabled = JSON.parse((await catalog.readResource({ uri: 'dsh://control/status', _meta: { threadId: B } })).contents[0].text);
-  assert.equal(disabled.enabled, false);
-  await uiB.setOutsourcingEnabled(true, uiB.snapshot().snapshot.global_control.state.revision);
-  assert.equal((await call(catalog, 'get_status')).enabled, true);
+  gate.setEnabled(false,gate.snapshot().revision);
+  const disabledTurn=randomUUID(); snapshots.capture(B,disabledTurn,directory);
+  const denied=await catalog.callTool({name:'spawn_agent',arguments:{task_name:'disabled',message:'Must not run'},_meta:{threadId:B,turn_id:disabledTurn}});
+  assert(denied.isError);assert.match(JSON.stringify(denied),/OUTSOURCING_DISABLED/);
+  assert.equal((await call(a1,'get_status')).enabled,true,'Running task keeps original enabled snapshot');
+  for(const client of [a1,a2,b,catalog]) assert.equal((await client.listTools()).tools.length,18);
+  gate.setEnabled(true,gate.snapshot().revision);
   await a1.close();
   await call(a2, 'followup_task', { target: agentA.id, message: 'HOLD_ACROSS_DISCONNECT Reply once more, without tools.' });
   await until(() => !!releaseHeld);
@@ -141,7 +146,7 @@ try {
       'cross-chat reads denied', 'authentication rejects an invalid token', 'close one connection without stopping others',
       'running task survives last-client disconnect', 'idle host cleanup', 'persisted reconnect', 'other chat survives restart',
       'host metadata routes task calls to independent chats', 'conflicting or invalid identities rejected',
-      'global disable hides every catalog and blocks cached calls', 'policy resource routed to caller'] };
+      'new-turn disable cannot alter existing snapshots', 'policy resource routed to caller'] };
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
 } finally {
   for (const client of uiClients) client.close();

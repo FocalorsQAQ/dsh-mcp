@@ -1,0 +1,14 @@
+.online-details { margin: 12px 20px; border: 1px solid #414141; border-radius: 12px; background: #292929; }
+.online-details summary { display: flex; gap: 10px; align-items: center; cursor: pointer; padding: 14px; list-style: none; }
+.online-details summary strong { font-size: 13px; font-weight: 500; }
+.online-details summary > span { margin-left: auto; color: #aaa; font-size: 11px; }
+.online-details[open] summary { border-bottom: 1px solid #414141; }
+.work-group { padding: 12px 14px; }
+.work-group + .work-group { border-top: 1px solid #414141; }
+.work-group h2 { font-size: 12px; font-weight: 600; margin: 0 0 10px; overflow-wrap: anywhere; }
+.agent-detail { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 1.4fr); gap: 4px 10px; padding: 6px 0; font-size: 12px; overflow-wrap: anywhere; }
+.agent-detail > span:nth-child(2), .agent-detail small { color: #aaa; }
+.agent-detail small { grid-column: 2; font-size: 11px; }
+.online-empty { padding: 0 14px 12px; color: #aaa; font-size: 12px; }
+.compact .online-details { margin-top: 0; }
+.compact .online-details[open] .work-group, .compact .online-details[open] .online-empty { display: none; }

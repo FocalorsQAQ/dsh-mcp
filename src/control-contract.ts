@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modelEntrySchema } from './model-config-contract.ts';
 
 /** Wire money is always [USD, CNY]. Currencies are independent; no implicit FX. */
 export const moneySchema = z.tuple([z.number().finite().min(0).max(1_000_000), z.number().finite().min(0).max(1_000_000)]);
@@ -14,6 +15,12 @@ export const policySchema = z.object({
   billing_currency: z.enum(['USD', 'CNY']).default('USD'),
 }).strict();
 export type ControlPolicy = z.infer<typeof policySchema>;
+export const taskSnapshotSchema = z.object({ version: z.literal(1), chat_id: z.uuid(), turn_id: z.uuid(),
+  captured_at: z.iso.datetime(), settings_revision: z.number().int().nonnegative().safe(), settings: policySchema,
+  model_revision: z.number().int().nonnegative().safe().nullable(), models: z.array(modelEntrySchema).max(500).nullable(),
+  legacy_model: z.string(), legacy_effort: z.string().optional(), caller_cwd: z.string(),
+}).strict();
+export type TaskSnapshot = z.infer<typeof taskSnapshotSchema>;
 // Zod 4 applies defaults inside optional fields: remove them before deriving a PATCH schema.
 const patchShape = Object.fromEntries(Object.entries(policySchema.shape).map(([key, field]) => [key, field.removeDefault().optional()])) as {
   [K in keyof typeof policySchema.shape]: z.ZodOptional<ReturnType<(typeof policySchema.shape)[K]['removeDefault']>>
@@ -46,7 +53,7 @@ export type RequestCharge = z.infer<typeof requestChargeSchema>;
 export const controlStateSchema = z.object({
   version: z.literal(1), revision: z.number().int().nonnegative(), task_id: z.string(),
   policy: policySchema, current_round_id: z.string(),
-  rounds: z.array(z.object({ id: z.string(), spent_nano: nanoMoneySchema })),
+  rounds: z.array(z.object({ id: z.string(), spent_nano: nanoMoneySchema, snapshot: taskSnapshotSchema.optional() })),
   task_spent_nano: nanoMoneySchema, tokens: tokenUsageSchema,
   requests: z.array(requestChargeSchema),
   last_request: requestChargeSchema.nullable(),
@@ -66,6 +73,9 @@ export interface AgentPolicyView {
   available_budget: Money | null;
   selected_models: string[] | null;
   model_selection_available: boolean;
+  settings_revision?: number;
+  captured_at?: string;
+  snapshot_locked?: boolean;
 }
 export interface AgentPolicySource {
   agentInfo(roundId?: string): AgentPolicyView;

@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.6](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.6)
+[下载 v0.1.7](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.7)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.6-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.7-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -27,30 +27,9 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
    如果取消自动接入，可运行开始菜单中的 **Connect to Codex**，或手动使用 `codex-mcp.toml`。
 4. 可在控制窗底部切换简体中文 / English。
 
-这是全局注册的 MCP 服务，可在 Codex 的 MCP 服务设置中查看，不是插件市场安装项。v0.1.5 支持多个聊天及全局工具发现同时连接；每个聊天独立任务和预算，共用 API/模型配置。控制窗的“当前聊天”选择需要查看和控制的聊天，悬浮球显示该聊天并发。出现工具可用不代表每条连接都已成功，应同时检查其他聊天能否正常调用。
+这是全局注册的 MCP 服务，可在 Codex 的 MCP 设置中查看，不是插件市场安装项。每个聊天独立任务和预算，共用 API、模型和下一轮默认配置。窗口汇总所有 work 的在线子代理，无需选择聊天。
 
-配置文件为安装目录中的 `dsh.config.json`。默认状态及加密凭据保存于
-`%LOCALAPPDATA%\dsh-mcp\data`。卸载程序不删除凭据、会话和账本；重新安装也不会
-覆盖现有配置。自动接入使用 `CODEX_HOME/config.toml`（未设置时使用 `~/.codex/config.toml`），
-保留原有文字和其他配置，修改前在同目录保存备份。如果已有不同的 `dsh` 条目，
-不会替换它；结果写入安装目录的 `codex-registration-result.json`。卸载仅移除安装器
-自己添加且未被用户修改的条目。更换工作区时编辑 `workspace_root` 并重启 MCP 和控制窗。
-回传聊天功能默认关闭，兼容的 Codex 宿主可按 `docs/completion-delivery.md` 单独启用。
-如需关闭控制窗自动打开，在 `dsh.config.json` 中加入 `"ui_auto_start": false` 并重启 Codex。
-
-### 从旧版本升级
-
-v0.1.6 增加所有聊天共享的总开关，打开控制窗后即可操作，无需先调用工具。关闭后保留工具和历史，`get_status` 与被拒绝的调用返回“外包已禁用”。状态查询和调用拦截不依赖工具列表刷新，切换开关无需重启；升级后仍须重启 Codex 加载新版服务。聊天选择器现在优先显示本地聊天名称。
-
-保留 v0.1.5 的请求身份路由：宿主在每次请求元数据中提供聊天 ID，启动环境中可能没有 `CODEX_THREAD_ID`。无需给所有聊天写死同一个 ID。尚未收到聊天调用时，总开关仍可操作，所选聊天的任务与用量等待连接。
-
-保留 v0.1.4 对数据目录争抢的修复。升级后重启 Codex，使连接使用新版入口。新聊天的数据在 `data/chats/<聊天 UUID>/` 下；旧根目录会话和账本保留，UI 标为“升级前的会话”，不会自动归入某个聊天。API/模型配置继续共用；新聊天继承旧用户策略作为初始值。详见 [多聊天连接](multi-chat.md)。
-
-v0.1.3 修复了覆盖安装 v0.1.2 时可能出现的 `CLI core initialization failed`。
-新版本会验证并迁移安装目录内指向同名依赖包的旧链接，保留现有配置与数据。
-即使 v0.1.2 已经复制文件后报错，也可以直接运行本版安装器修复，无需先删除数据目录。
-初始化结果保存在安装目录的 `initialization-result.json`，详细错误也会写入 Setup Log。
-普通文件夹、指向安装目录外的链接或无法确认所属包的链接会保留并报错，避免覆盖其他内容。
+0.1.7 使用提交事件快照。安装后重启 Codex，并运行安装目录的 `Review task hook.cmd`，在 Codex CLI 输入 `/hooks`，审查并信任 `dsh` 的 `UserPromptSubmit` 钩子。安装器不自动信任脚本。若 hook 功能被关闭，需要先启用。之后发布新任务即可在模型运行前固定预算、开关和模型；没有快照的旧轮次会被拒绝。详见 [任务配置快照](task-snapshots.md)。
 
 ## 手动安装已编译程序
 
@@ -58,8 +37,8 @@ v0.1.3 修复了覆盖安装 v0.1.2 时可能出现的 `CLI core initialization 
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.6-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.6-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.7-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.7-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -125,16 +104,12 @@ The UI supports Simplified Chinese and English.
 Version 0.1.5 routes Codex calls by host-supplied request metadata, including
 when startup has no chat environment variable, and auto-opens the UI. Each
 chat has its own tasks, queues, limits and budgets; API/model settings are shared.
-Use the desktop chat selector to choose the control and spending view. Restart
+Use the dashboard to configure future tasks and inspect all online agents. Restart
 Codex after upgrading. Old root state is retained separately and is not silently
 assigned to a chat. This is a globally registered MCP server, not a marketplace
 plugin. See [multiple chats](multi-chat.md).
 
-Version 0.1.6 adds a shared delegation switch that works before any chat tool
-call, plus chat names from Codex's local title index. Tool definitions and history
-remain. get_status and blocked calls supply the latest disabled notice, so toggling
-does not require a restart or a tool-list refresh. Restart Codex after upgrading
-to load the new server version.
+Version 0.1.7 captures settings at task submission using a local Codex UserPromptSubmit hook. Review and trust the hook with `/hooks` before submitting a new task. The installer registers it but never bypasses trust. Settings remain editable without a running chat; changes apply to future tasks only. The UI aggregates all online subagents and no longer selects a chat.
 
 Version 0.1.3 fixes upgrades from earlier releases, including installations left
 in a mixed state after the v0.1.2 initialization error. Run the newer installer

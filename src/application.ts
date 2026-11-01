@@ -13,6 +13,7 @@ export function createApplication(config: Config, backend: BackendFactory = crea
     snapshot,
     getGlobalControl: () => manager.globalControl.status(),
     setOutsourcingEnabled: (enabled: boolean, expectedRevision: number) => manager.globalControl.setEnabled(enabled, expectedRevision),
+    updateDefaults: (patch: unknown, expectedRevision: number) => manager.globalControl.updateSettings(patch, expectedRevision),
     updateSettings: (patch: unknown, expectedRevision: number) => { controls.updatePolicy(patch, expectedRevision); return snapshot(); },
     beginRound: (hostRoundId: string, expectedRevision: number) => { controls.beginRound(hostRoundId, expectedRevision); return snapshot(); },
     openManagementWindow: (window: 'api_keys' | 'models') => controls.windowIntent(window),
@@ -31,7 +32,8 @@ export function createApplication(config: Config, backend: BackendFactory = crea
     },
   }) : manager, discovery ? 'Shared connection: each request is routed using the host-supplied chat ID in MCP metadata. No model-selected chat argument is needed. Tasks, queues and budgets remain isolated per chat. ' :
     config.codex_thread_id ? 'Chat binding: ' + config.codex_thread_id + '. Tasks, queues and budgets are isolated to this chat. ' : '',
-    { catalog: discovery, routing, sessionId: discovery ? undefined : config.codex_thread_id }), close: () => manager.shutdown() };
+    { catalog: discovery, routing, sessionId: discovery ? undefined : config.codex_thread_id,
+      ...(!discovery ? { scope: <T>(extra: { _meta?: Record<string, unknown> }, action: () => T) => manager.withRequest(extra._meta, action) } : {}) }), close: () => manager.shutdown() };
 }
 
 export type DshApplication = ReturnType<typeof createApplication>;

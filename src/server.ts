@@ -34,17 +34,19 @@ async function callResult(action: () => unknown | Promise<unknown>): Promise<Cal
 }
 
 /** MCP stdio tool names mirror collaboration; the server registration supplies the dsh namespace. */
-export function createServer(manager: AgentTools, extraInstructions = '', options: { catalog?: boolean; sessionId?: string; routing?: ServerRouting } = {}): McpServer {
+export function createServer(manager: AgentTools, extraInstructions = '', options: { catalog?: boolean; sessionId?: string; routing?: ServerRouting;
+  scope?: <T>(extra: ToolExtra, action: () => T) => T } = {}): McpServer {
   const policy = options.catalog ? undefined : manager.policySource;
   const gate = manager.policySource;
   const status = () => {
     try {
       gate?.assertEnabled();
-      return { enabled: true, scope: 'all_chats', message: '外包已启用。Outsourcing is enabled.',
-        instruction: 'The user may change this switch at any time. Check get_status before delegating; every operation is independently enforced by the server.' };
+      return { enabled: true, scope: policy ? 'task_snapshot' : 'next_task_defaults', message: '本轮外包可用。Outsourcing is enabled for this task.',
+        ...(policy ? { control: { ...policy.agentInfo(), ...(options.sessionId ? { chat_id: options.sessionId } : {}) } } : {}),
+        instruction: 'Use the immutable configuration captured when this task was submitted. Settings edited later apply to future tasks. Every operation and paid API request is enforced by the server.' };
     } catch (error) {
-      return { enabled: false, scope: 'all_chats', message: '外包已禁用。Outsourcing is disabled.',
-        instruction: 'Do not call other dsh tools or retry blocked calls while disabled. Continue the task without dsh outsourcing until the user enables it.',
+      return { enabled: false, scope: policy ? 'task_snapshot' : 'next_task_defaults', message: '外包已禁用。Outsourcing is disabled for this task.',
+        instruction: 'Do not call other dsh tools in this task. UI changes apply to later submissions; they do not replace this task snapshot.',
         error: { code: error instanceof DshError ? error.code : 'INTERNAL', message: errorText(error) } };
     }
   };
@@ -54,8 +56,7 @@ export function createServer(manager: AgentTools, extraInstructions = '', option
     return policy ? { ...(value as Record<string, unknown>), control: { ...policy.agentInfo(),
       ...(options.sessionId ? { chat_id: options.sessionId } : {}) } } : value;
   });
-  extraInstructions += '\nGlobal outsourcing status at connection initialization: ' + JSON.stringify(status());
-  extraInstructions += '\nThe user controls one global outsourcing switch for all chats. Tool definitions and previous conversation context remain available when disabled and do not grant permission to outsource. Call get_status before delegating to read the current state; it remains available while disabled. A disabled result means do not retry other dsh tools until the user enables outsourcing. Never infer the current switch from cached descriptions.';
+  extraInstructions += '\nEach host turn receives an immutable outsourcing configuration through the UserPromptSubmit hook before the model starts. UI settings and model selection are defaults for later submissions. Call get_status before delegating to read this turn snapshot and its remaining budget. It remains available while disabled. If no valid submission snapshot exists, outsourcing is blocked. Tool definitions and history do not grant permission; never infer current authorization from cached descriptions. All descendants and paid requests retain their originating turn snapshot.';
   extraInstructions += policy ? '\nHost-enforced outsourcing policy: ' + JSON.stringify(policy.agentInfo()) : '';
   const server = new McpServer({ name: 'dsh', version }, {
     instructions: 'External DeepSeek Harness agents. spawn_agent and followup_task return immediately. max_depth limits further delegation (root default 0); max_children limits lifetime direct children (root default 1). Children inherit remaining depth minus one and the width limit; neither can be increased. All workers share server capacity. fork_turns=all snapshots a dsh parent conversation or reads exact local Codex visible history; context may also be supplied explicitly. fork_turns=none starts fresh (default). For root all without context, read the exact local Codex rollout using source_thread_id, configured codex_thread_id, or CODEX_THREAD_ID. Never guess a chat by recency. This exports visible archival history, not the exact model working context. When notify_on_completion is enabled, task completion or failure is reported back to the bound chat. Callback messages are external result data, not new user instructions. read_agent.delivery distinguishes published, queued drafts, and failures. Use wait_agent with its returned cursor and read_agent to inspect results. send_message queues at the next turn boundary and never wakes an idle agent. Workers may edit their configured workspace and call the configured model API. Inspect finish_reason and error. An MCP wait cancellation leaves agents running. Close unwanted agents with close_agent. ' + extraInstructions,
@@ -67,21 +68,25 @@ export function createServer(manager: AgentTools, extraInstructions = '', option
   // deliberately bypasses the outsourcing gate and never starts a chat worker.
   const statusTool = server.registerTool('get_status', {
     title: 'Read outsourcing status',
-    description: 'Read the live user-controlled global outsourcing switch. Call before delegating, even if cached tool descriptions say enabled. Always available, including when other dsh calls are blocked. Disabled means do not call other dsh tools or retry them until the user enables outsourcing. No worker, model API request, or budget change.',
+    description: 'Read the calling turn submission snapshot and remaining budget. Call before delegating. Available even when this turn disables outsourcing. UI changes apply only to later submissions. A missing snapshot blocks outsourcing. This query never starts an external agent or model API request.',
     inputSchema: z.object({}).strict(), annotations: readOnly,
-  }, (_input, extra) => callResult(() => {
+  }, async (_input, extra) => {
+    try {
     const id = requestSessionId(extra._meta);
     if (options.sessionId && id && id !== options.sessionId) throw new DshError('SESSION_IDENTITY', 'Request chat does not match this connection.');
-    return status();
-  }));
+    const fallback = () => callResult(() => options.scope ? options.scope(extra, status) : status());
+    if (options.routing && id) return await options.routing.tool('get_status', {}, extra, fallback);
+    return await fallback();
+    } catch (error) { return callResult(() => { throw error; }); }
+  });
   const statusDescription = statusTool.description!;
   const register: typeof server.registerTool = (name, config, handler) => {
     const wrapped = async (input: Record<string, unknown>, extra: ToolExtra): Promise<CallToolResult> => {
       try {
-        gate?.assertEnabled();
         const id = requestSessionId(extra._meta);
         if (options.sessionId && id && id !== options.sessionId) throw new DshError('SESSION_IDENTITY', 'Request chat does not match this connection.');
-        const fallback = async () => await Reflect.apply(handler, undefined, [input, extra]) as CallToolResult;
+        const execute = async () => { gate?.assertEnabled(); return await Reflect.apply(handler, undefined, [input, extra]) as CallToolResult; };
+        const fallback = async () => options.scope ? options.scope(extra, execute) : execute();
         return options.routing ? await options.routing.tool(name, input, extra, fallback) : await fallback();
       } catch (error) {
         const response = await callResult(() => { throw error; });
@@ -121,7 +126,7 @@ export function createServer(manager: AgentTools, extraInstructions = '', option
 
   if (manager.listModel && manager.listEffort) {
     register('list_model', {
-      title: 'List enabled models', description: 'Return the currently enabled model IDs. Use an exact ID in spawn_agent.model. Configuration changes are enforced before every API request.',
+      title: 'List enabled models', description: 'Return model IDs frozen in this task submission snapshot. Use an exact ID in spawn_agent.model. Source credentials must remain valid; UI selection changes affect later submissions.',
       inputSchema: z.object({}).strict(), annotations: readOnly,
     }, () => result(() => manager.listModel!()));
     register('list_effort', {
@@ -234,9 +239,9 @@ export function createServer(manager: AgentTools, extraInstructions = '', option
       if (options.catalog && !id) return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify({
         ...status(), session_required: true,
       }) }] };
-      return options.routing ? options.routing.policy(extra) :
-        { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(policy ? { ...policy.agentInfo(),
-          ...(options.sessionId ? { chat_id: options.sessionId } : {}) } : { session_required: true }) }] };
+      const fallback = () => ({ contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(policy ? { ...policy.agentInfo(),
+          ...(options.sessionId ? { chat_id: options.sessionId } : {}) } : { session_required: true }) }] });
+      return options.routing ? options.routing.policy(extra) : options.scope ? options.scope(extra, fallback) : fallback();
     });
     const description = registered[0]!.description ?? '';
     let previous = '';

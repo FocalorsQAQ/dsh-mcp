@@ -39,7 +39,7 @@ try {
   const env = { ...process.env, DSH_UI_LOCALE: 'zh-CN' }; delete env.ELECTRON_RUN_AS_NODE;
   desktop = await electron.launch({ executablePath: require('electron'), args: [join(runtime, 'desktop/main.mjs'), '--config', configPath], env });
   const control = await desktop.firstWindow(); control.on('pageerror', error => errors.push(error.message));
-  await control.getByRole('heading', { name: '外包已启用' }).waitFor();
+  await control.getByRole('heading', { name: '下一轮任务配置' }).waitFor();
   const original = await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds());
   const opened = desktop.waitForEvent('window');
   await control.getByRole('button', { name: '收起为悬浮球' }).click();
@@ -89,8 +89,8 @@ try {
   await orb.getByText('Active', { exact: true }).waitFor();
   assert.equal(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 2, 'Reuse the same orb window.');
   await bridge.close();
-  await orb.getByText('Offline', { exact: true }).waitFor();
-  assert.equal(await orb.getByTestId('orb-concurrency').textContent(), '—');
+  await orb.getByText('Active', { exact: true }).waitFor();
+  await orb.getByTestId('orb-concurrency').filter({ hasText: /^0$/ }).waitFor();
   await orb.screenshot({ path: join(directory, 'orb-offline.png'), omitBackground: true });
   assert.deepEqual(errors, []);
   const closed = desktop.waitForEvent('close');

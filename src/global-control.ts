@@ -4,27 +4,33 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { DshError } from './types.ts';
+import { policySchema, policyPatchSchema, type ControlPolicy } from './control-contract.ts';
 
-export const globalControlSchema = z.object({ version: z.literal(1), revision: z.number().int().nonnegative().safe(), enabled: z.boolean() }).strict();
+const storedSchema = z.object({ version: z.literal(2), revision: z.number().int().nonnegative().safe(), settings: policySchema }).strict();
+export const globalControlSchema = storedSchema.extend({ enabled: z.boolean() });
 export const outsourcingCommandSchema = z.object({ enabled: z.boolean(), expected_revision: z.number().int().nonnegative().safe() }).strict();
 export type GlobalControlState = z.infer<typeof globalControlSchema>;
 export type GlobalControlStatus = { available: true; state: GlobalControlState } | { available: false; state: null; error: string };
 
-/** Shared user-owned gate. Read synchronously at dispatch; polling only drives UI/catalog notifications. */
+/** Shared defaults for future tasks, editable without a running chat or model. */
 export class OutsourcingSwitch {
   private readonly path: string;
   private listeners = new Set<() => void>();
   private timer?: ReturnType<typeof setInterval>;
   private signature = '';
-  constructor(readonly directory: string, private readonly python = 'python', initialEnabled = true) {
+  constructor(readonly directory: string, private readonly python = 'python', initial: boolean | ControlPolicy = true) {
     this.path = join(directory, 'outsourcing.json');
-    if (!existsSync(this.path)) this.command({ operation: 'initialize', initial_enabled: initialEnabled });
+    const settings = policySchema.parse(typeof initial === 'boolean' ? { enabled: initial } : initial);
+    let migrate = false;
+    try { migrate = JSON.parse(readFileSync(this.path, 'utf8')).version === 1; } catch { /* snapshot reports invalid storage. */ }
+    if (!existsSync(this.path) || migrate) this.command({ operation: 'initialize', initial_settings: settings });
   }
   snapshot(): GlobalControlState {
     try {
       const stat = lstatSync(this.path);
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 65536) throw new Error('Invalid switch file.');
-      return globalControlSchema.parse(JSON.parse(readFileSync(this.path, 'utf8')));
+      const state = storedSchema.parse(JSON.parse(readFileSync(this.path, 'utf8')));
+      return { ...state, enabled: state.settings.enabled };
     } catch { throw new DshError('GLOBAL_CONTROL_STORAGE', 'Cannot read the global outsourcing switch; outsourcing is disabled.'); }
   }
   status(): GlobalControlStatus {
@@ -45,11 +51,17 @@ export class OutsourcingSwitch {
     let response;
     try { response = JSON.parse(result.stdout); } catch { throw new DshError('GLOBAL_CONTROL_STORAGE', 'Invalid switch storage response.'); }
     if (response.ok !== true) throw new DshError(response.code ?? 'GLOBAL_CONTROL_STORAGE', response.message ?? 'Cannot update the global switch.');
-    return globalControlSchema.parse(response.state);
+    const state = storedSchema.parse(response.state);
+    return { ...state, enabled: state.settings.enabled };
   }
   setEnabled(enabled: boolean, expectedRevision: number): GlobalControlState {
     const input = outsourcingCommandSchema.parse({ enabled, expected_revision: expectedRevision });
-    const result = this.command({ operation: 'update', ...input });
+    return this.updateSettings({ enabled: input.enabled }, input.expected_revision);
+  }
+  updateSettings(patch: unknown, expectedRevision: number): GlobalControlState {
+    const parsed = policyPatchSchema.parse(patch);
+    const revision = z.number().int().nonnegative().safe().parse(expectedRevision);
+    const result = this.command({ operation: 'update', patch: parsed, expected_revision: revision });
     this.refresh(); return result;
   }
   private refresh() {

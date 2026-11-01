@@ -13,6 +13,7 @@ export const messageSchema = z.object({
 });
 export type QueuedMessage = z.infer<typeof messageSchema>;
 export const agentSchema = z.object({
+  last_round_id: z.string().optional(),
   id: z.uuid(), task_name: z.string(), path: z.string(), parent_id: z.uuid().nullable(),
   cwd: z.string(), model: z.string(), reasoning_effort: z.string().optional(),
   model_binding: z.object({ id: z.uuid(), api_id: z.uuid(), model_id: z.string(), source_protocol: apiProtocolSchema, source_base_url: z.string() }).optional(),

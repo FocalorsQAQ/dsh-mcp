@@ -26,7 +26,8 @@ test('global switch migrates the original preference once, persists independentl
   assert.throws(() => b.setEnabled(false, 0), /changed/);
   assert.equal(new OutsourcingSwitch(dir, 'python', false).enabled, true);
   assert.equal(readFileSync(join(dir, 'state.json'), 'utf8'), legacy);
-  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, 'outsourcing.json'), 'utf8'))).sort(), ['enabled', 'revision', 'version']);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, 'outsourcing.json'), 'utf8'))).sort(), ['revision', 'settings', 'version']);
+  assert.deepEqual(a.snapshot().settings.round_budget, [9, 3]);
 });
 test('separate processes serialize competing global switch writes', async () => {
   const dir = directory(); new OutsourcingSwitch(dir);
@@ -34,17 +35,17 @@ test('separate processes serialize competing global switch writes', async () => 
     const child = spawn('python', ['-I', '-B', 'runtime/global_control.py'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = ''; child.stdout.on('data', chunk => { out += chunk; }); child.once('error', reject);
     child.once('exit', code => { try { assert.equal(code, 0); resolve(JSON.parse(out)); } catch (error) { reject(error); } });
-    child.stdin.end(JSON.stringify({ operation: 'update', directory: dir, enabled: false, expected_revision: 0 }));
+    child.stdin.end(JSON.stringify({ operation: 'update', directory: dir, patch: { enabled: false }, expected_revision: 0 }));
   });
   const results = await Promise.all([update(), update()]);
   assert.equal(results.filter(row => row.ok).length, 1);
   assert.equal(results.find(row => !row.ok)?.code, 'GLOBAL_CONTROL_CONFLICT');
 });
-test('shared gate preserves tool definitions and supplies live disable notices before any chat calls', async t => {
+test('standalone legacy adapters preserve tool definitions and live disable notices', async t => {
   const dir = directory(), base = loadConfig(undefined, { workspace: dir, dataDir: join(dir, 'data') });
   const gate = new OutsourcingSwitch(base.data_dir, 'python', false);
   const ids = ['discovery', '10000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000002'];
-  const apps = ids.map(id => createApplication(sessionConfig(base, id), () => { throw new Error('No worker may start.'); }));
+  const apps = ids.map(id => createApplication({ ...sessionConfig(base, id), codex_thread_id: undefined }, () => { throw new Error('No worker may start.'); }));
   const clients: Client[] = [], servers = apps.map((app, i) => app.createMcpServer(i === 0));
   let notifications = 0;
   t.after(async () => { for (const client of clients) await client.close(); for (const server of servers) await server.close(); for (const app of apps) await app.close(); });
@@ -53,7 +54,7 @@ test('shared gate preserves tool definitions and supplies live disable notices b
     client.setNotificationHandler(ToolListChangedNotificationSchema, () => { notifications++; });
     const [a, b] = InMemoryTransport.createLinkedPair(); await server.connect(a); await client.connect(b);
     assert.equal((await client.listTools()).tools.length, 18);
-    assert.match(client.getInstructions()!, /外包已禁用/);
+    assert.match(client.getInstructions()!, /UserPromptSubmit/);
     const status = await client.callTool({ name: 'get_status', arguments: {} });
     assert(!status.isError); assert.equal(status.structuredContent?.enabled, false);
   }

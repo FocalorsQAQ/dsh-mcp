@@ -3,10 +3,16 @@ import { DshError } from './types.ts';
 
 /** Codex supplies caller identity in MCP request metadata, outside model arguments. */
 export function requestSessionId(meta: Record<string, unknown> | undefined): string | undefined {
+  return requestIdentity(meta, ['threadId', 'thread_id']);
+}
+export function requestTurnId(meta: Record<string, unknown> | undefined): string | undefined {
+  return requestIdentity(meta, ['turnId', 'turn_id']);
+}
+function requestIdentity(meta: Record<string, unknown> | undefined, keys: string[]): string | undefined {
   if (!meta) return undefined;
   const candidates: unknown[] = [];
   const collect = (value: Record<string, unknown>) => {
-    for (const key of ['threadId', 'thread_id']) if (value[key] !== undefined) candidates.push(value[key]);
+    for (const key of keys) if (value[key] !== undefined) candidates.push(value[key]);
   };
   collect(meta);
   const raw = meta['x-codex-turn-metadata'];

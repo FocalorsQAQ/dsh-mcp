@@ -1,6 +1,6 @@
 # DeepSeek Harness as Subagent · dsh MCP
 
-[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.6) · [安装说明 / Installation](docs/install.md)
+[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.7) · [安装说明 / Installation](docs/install.md)
 
 **在线安装器从 GitHub 下载程序及 DeepSeek Harness CLI 核心运行包，并校验文件。手动安装必须同时下载程序 ZIP 与 CLI 核心 ZIP。** CLI 来自官方 dsh 项目，本项目将固定版本的官方 npm 包及其依赖重新分发为 GitHub Release 附件，详见[来源和安装方式](docs/install.md)。本项目为独立社区集成，非 DeepSeek 或 OpenAI 官方产品。
 
@@ -10,9 +10,9 @@
 
 界面支持**简体中文 / English**。在控制窗底部切换，三个窗口即时同步并记住选择；未保存的表单输入会保留。启动时也可用 `DSH_UI_LOCALE=en-US` 指定英文。
 
-点击最小化可收起为**悬浮球**，实时显示所选聊天的代理并发数（含二次外包）。拖动移动，点击展开；断线时显示离线状态。每个聊天独立任务、队列和预算，共用 API/模型配置；控制窗可切换聊天。v0.1.5 补齐 Codex 实际采用的请求元数据身份路由，修复无启动聊天 ID 时只能列出工具、窗口不自动打开的问题。详见 [多聊天连接](docs/multi-chat.md)。
+控制窗可随时编辑后续任务配置；提交任务时冻结开关、代理数量、预算和模型选择，正在运行的任务保留原快照。无需等待模型调用工具。首次安装需在 Codex CLI 的 `/hooks` 审查提交钩子；没有有效快照会拒绝外包。详见 [配置快照](docs/task-snapshots.md)。
 
-v0.1.6 增加**所有聊天共享的外包总开关**，打开窗口后即可操作，无需先调用工具。关闭时保留工具定义和历史上下文，连接提示、`get_status` 以及被拒绝的调用会明确返回“外包已禁用”；服务端立即拦截外包，不依赖模型自觉或客户端刷新工具目录。已有聊天在下次状态查询或调用时收到最新状态，切换本身无需重启。聊天选择器优先显示 Codex 本地保存的名称，并跟随重命名更新；任务和预算继续独立。
+窗口仅展示全部 work 的在线子代理数量，点击展开名称、模型与推理强度；没有聊天选择器。悬浮球同样显示汇总数量。每个聊天的任务和预算仍独立，API 与模型配置共享。
 
 ```text
 Codex / MCP 客户端
@@ -26,7 +26,7 @@ Codex / MCP 客户端
 
 | 工具 | 行为 |
 | --- | --- |
-| `get_status` | 查询所有聊天共用的实时开关；禁用时仍可用。外包前先查询，关闭时返回“外包已禁用”，不创建代理或消耗模型额度。 |
+| `get_status` | 查询本轮提交快照及剩余预算；禁用时仍可用并返回“外包已禁用”，不创建代理或消耗模型额度。 |
 | `spawn_agent` | 立即返回代理 ID 和 `/root/task_name` 路径，后台启动任务。支持 `message`、`cwd`、`model`、`reasoning_effort`、`context`、`parent`、`fork_turns`、`max_depth` 和 `max_children`。 |
 | `list_model` | 返回当前已启用的可选模型 ID。 |
 | `list_effort` | 输入 `model_id`，返回该模型按用户声明顺序保存的推理强度列表。 |
@@ -56,7 +56,7 @@ Codex / MCP 客户端
 
 ## 安装、运行与接入 Codex
 
-普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.6)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
+普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.7)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
 
 计费公式已独立为 `billing/rules.py`，价格表为 `billing/prices.json` 与 `billing/openai-prices.json`。价格表保存后自动重载；可用 `pnpm prices:edit deepseek` / `pnpm prices:edit openai` 打开编辑器，`pnpm prices:check` 校验。可以在配置的 `billing.rules` 中指定自己的 Python 文件；预算、账本和异常处理仍由服务端执行。详见 [Python 自定义计费](docs/billing.md)。
 

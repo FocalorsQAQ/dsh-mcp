@@ -10,6 +10,9 @@ import { ControlPlane } from './control-plane.ts';
 import { PythonBilling } from './billing.ts';
 import { RuntimeModels } from './runtime-models.ts';
 import { OutsourcingSwitch } from './global-control.ts';
+import { TaskSnapshots } from './task-snapshot.ts';
+import { requestSessionId, requestTurnId } from './request-context.ts';
+import { readCodexTurnId } from './codex-context.ts';
 import {
   DshError, errorText, type AgentBackend, type AgentEvent, type AgentRecord,
   type AgentStatus, type BackendFactory, type QueuedMessage, type DeliveryRecord, type DeliveryTransport, type ManagerEvent,
@@ -78,7 +81,7 @@ export class AgentManager {
     private readonly deliver: DeliveryTransport = createDeliveryTransport(config)) {
     this.changed.setMaxListeners(0);
     this.runtimeModels = new RuntimeModels(config);
-    this.globalControl = new OutsourcingSwitch(config.control_config_dir ?? config.data_dir, config.billing.python, config.control.enabled);
+    this.globalControl = new OutsourcingSwitch(config.control_config_dir ?? config.data_dir, config.billing.python, config.control);
     this.store = new StateStore(config.data_dir, config.billing.python);
     try {
       const state = this.store.read();
@@ -89,10 +92,10 @@ export class AgentManager {
       this.controlPlane = new ControlPlane(config.control, state.control, () => this.save(), undefined, new PythonBilling(config.billing), undefined, this.globalControl);
       this.controlPlane.selection = this.runtimeModels;
       this.controlPlane.subscribe(() => {
-        if (!this.controlPlane.policy.enabled) {
-          for (const id of this.workers.keys()) {
-            const agent = this.agents.get(id)!;
-            if (!agent.pause_requested) { agent.pause_requested = true; this.record(agent, 'status', '外包已禁用'); }
+        for (const id of this.workers.keys()) {
+          const agent = this.agents.get(id)!;
+          if (!this.controlPlane.policyFor(this.agentRound(id)).enabled && !agent.pause_requested) {
+            agent.pause_requested = true; this.record(agent, 'status', '外包已禁用');
           }
         }
         this.changed.emit('change');
@@ -264,14 +267,20 @@ export class AgentManager {
       matches.length ? 'Task name is ambiguous; use the agent ID or canonical path.' : 'Unknown agent: ' + target);
   }
 
-  private requireSlot(root = false): void {
-    this.controlPlane.assertEnabled();
-    if (root && [...this.workers.keys()].filter(id => !this.agents.get(id)!.parent_id).length >= this.controlPlane.policy.max_root_agents) {
+  private requireSlot(root = false, roundId = this.controlPlane.currentRound): void {
+    this.controlPlane.assertEnabled(roundId);
+    if (root && [...this.workers.keys()].filter(id => !this.agents.get(id)!.parent_id && this.agentRound(id) === roundId).length >= this.controlPlane.policyFor(roundId).max_root_agents) {
       throw new DshError('ROOT_CAPACITY', 'The user limit on simultaneously running top-level agents has been reached.');
     }
     if (this.workers.size >= this.concurrencyLimit) {
       throw new DshError('CAPACITY', 'All ' + this.concurrencyLimit + ' agent slots are busy (active=' + this.workers.size + '). Wait, raise the concurrency limit, or interrupt an agent.');
     }
+  }
+
+  private assertTurnRootCapacity(agent: AgentRecord, roundId: string) {
+    if (agent.parent_id) return;
+    const peers = [...this.workers.keys()].filter(id => id !== agent.id && !this.agents.get(id)!.parent_id && this.agentRound(id) === roundId).length;
+    if (peers >= this.controlPlane.policyFor(roundId).max_root_agents) throw new DshError('CAPACITY', 'This submitted turn has reached its top-level agent limit.');
   }
 
   private get concurrencyLimit(): number { return this.concurrencyOverride ?? this.config.max_concurrent_agents; }
@@ -307,32 +316,47 @@ export class AgentManager {
   }
 
   get policySource() { return this.controlPlane; }
+  withRequest<T>(meta: Record<string, unknown> | undefined, action: () => T): T {
+    const chatId = this.config.codex_thread_id;
+    if (!chatId) return action(); // Standalone embedders can establish rounds through the trusted API.
+    const provided = requestSessionId(meta);
+    if (provided && provided !== chatId) throw new DshError('SESSION_IDENTITY', 'Request chat does not match this service.');
+    const turnId = requestTurnId(meta) ?? readCodexTurnId({ threadId: chatId, codexHome: this.config.codex_home });
+    const snapshot = new TaskSnapshots(this.config).read(chatId, turnId);
+    return this.controlPlane.withSnapshot(snapshot, action);
+  }
+  private resolveModel(model: string, effort?: string, binding?: AgentRecord['model_binding'], roundId = this.controlPlane.currentRound) {
+    const snapshot = this.controlPlane.taskSnapshot(roundId);
+    if (snapshot && !(snapshot.models?.map(row => row.model_id) ?? [snapshot.legacy_model]).includes(model)) throw new DshError('MODEL_DISABLED', 'Model is not in this task snapshot: ' + model);
+    return this.runtimeModels.resolve(model, effort, binding, snapshot?.models);
+  }
   listModel(callerId?: string) {
     if (callerId) {
       const caller = this.resolve(callerId);
       try {
-        const row = this.runtimeModels.resolve(caller.model, undefined, caller.model_binding);
+        const row = this.resolveModel(caller.model, undefined, caller.model_binding, this.agentRound(callerId));
         return { models: row && !caller.model_binding ? [] : [caller.model] };
       } catch (error) {
         if (error instanceof DshError && ['MODEL_DISABLED', 'MODEL_ROUTE_CHANGED'].includes(error.code)) return { models: [] };
         throw error;
       }
     }
-    return { models: this.runtimeModels.managed ? this.runtimeModels.selected().map(row => row.model_id) : [this.config.model] };
+    const snapshot = this.controlPlane.taskSnapshot();
+    return { models: snapshot ? snapshot.models?.map(row => row.model_id) ?? [snapshot.legacy_model] : this.runtimeModels.managed ? this.runtimeModels.selected().map(row => row.model_id) : [this.config.model] };
   }
   listEffort(model: string, callerId?: string) {
     if (!this.listModel(callerId).models.includes(model)) throw new DshError('MODEL_DISABLED', 'Model is not available to this caller: ' + model);
-    const row = this.runtimeModels.resolve(model);
+    const row = this.resolveModel(model, undefined, undefined, callerId ? this.agentRound(callerId) : this.controlPlane.currentRound);
     return { model_id: model, efforts: row?.reasoning_levels ?? this.controlPlane.models.get(model)?.effort_levels ?? [] };
   }
   subscribe(listener: () => void): () => void {
     const safe = () => { try { listener(); } catch { /* UI listeners cannot break lifecycle or accounting. */ } };
     this.changed.on('change', safe); return () => this.changed.off('change', safe);
   }
-  agentRound(target: string): string { return this.resolve(target).active_message?.round_id ?? this.controlPlane.currentRound; }
+  agentRound(target: string): string { const agent = this.resolve(target); return agent.active_message?.round_id ?? agent.pending[0]?.round_id ?? agent.last_round_id ?? this.controlPlane.currentRound; }
   private level(agent: AgentRecord): number { return agent.path.split('/').length - 3; }
   private depth(agent: AgentRecord): number {
-    const policy = this.controlPlane.policy;
+    const policy = this.controlPlane.policyFor(this.agentRound(agent.id));
     return policy.allow_secondary ? Math.max(0, Math.min(agent.max_depth, policy.max_depth_user - this.level(agent))) : 0;
   }
   private assertExecution(agent: AgentRecord, roundId = this.agentRound(agent.id)): void {
@@ -344,9 +368,9 @@ export class AgentManager {
       }
       child = parent;
     }
-    this.runtimeModels.resolve(agent.model, agent.reasoning_effort, agent.model_binding);
-    this.controlPlane.assertEnabled();
-    const policy = this.controlPlane.policy;
+    this.resolveModel(agent.model, agent.reasoning_effort, agent.model_binding, roundId);
+    this.controlPlane.assertEnabled(roundId);
+    const policy = this.controlPlane.policyFor(roundId);
     if (agent.parent_id && (!policy.allow_secondary || this.level(agent) > policy.max_depth_user)) {
       throw new DshError('DELEGATION_DISABLED', 'The current user policy forbids this delegation level.');
     }
@@ -361,6 +385,8 @@ export class AgentManager {
     if (forkTurns !== 'none' && forkTurns !== 'all') throw new DshError('INPUT', 'fork_turns must be none or all.');
     if (this.agents.size >= this.config.max_agents) throw new DshError('CAPACITY', 'Agent registry limit reached; use a new data directory or raise max_agents.');
     const parent = options.parent ? this.resolve(options.parent) : undefined;
+    const roundId = this.controlPlane.currentRound;
+    if (parent?.active_message?.round_id && parent.active_message.round_id !== roundId) throw new DshError('TASK_SCOPE', 'A new main-agent turn cannot attach children to another active turn.');
     this.requireSlot(!parent);
     let maxDepth = options.max_depth ?? (parent ? Math.max(0, this.depth(parent) - 1) : 0);
     let maxChildren = options.max_children ?? parent?.max_children ?? 1;
@@ -370,7 +396,7 @@ export class AgentManager {
     if (parent) {
       if (parent.status === 'closed') throw new DshError('CLOSED', 'Cannot create a task under a closed agent.');
       if (options.model !== undefined && options.model !== parent.model) throw new DshError('DELEGATION_MODEL', 'Secondary delegation must use the parent model: ' + parent.model);
-      this.assertExecution(parent);
+      this.assertExecution(parent, roundId);
       if (this.depth(parent) === 0) throw new DshError('DELEGATION_DEPTH', 'The parent has no remaining delegation levels under the model and user policies.');
       if (maxDepth > parent.max_depth - 1) throw new DshError('DELEGATION_DEPTH', 'A child cannot increase the remaining delegation depth.');
       if (maxChildren > parent.max_children) throw new DshError('DELEGATION_LIMIT', 'A child cannot increase max_children beyond its parent limit.');
@@ -379,13 +405,12 @@ export class AgentManager {
     const policy = this.controlPlane.policy;
     maxDepth = policy.allow_secondary ? Math.min(maxDepth, Math.max(0, policy.max_depth_user - (parent ? this.level(parent) + 1 : 0))) : 0;
     maxChildren = Math.min(maxChildren, policy.max_children_user);
-    const roundId = parent ? this.agentRound(parent.id) : this.controlPlane.currentRound;
-    const model = parent?.model ?? options.model ?? (this.runtimeModels.managed ? this.listModel().models[0] : this.config.model);
+    const model = parent?.model ?? options.model ?? this.listModel().models[0];
     if (!model) throw new DshError('MODEL_DISABLED', 'No enabled model. Enable a model in the model window.');
-    const selection = this.runtimeModels.resolve(model, options.reasoning_effort, parent?.model_binding);
+    const selection = this.resolveModel(model, options.reasoning_effort, parent?.model_binding, roundId);
     if (parent && selection && !parent.model_binding) throw new DshError('MODEL_ROUTE_CHANGED', 'The parent predates managed model selection; create a new top-level agent.');
-    const effort = options.reasoning_effort ?? (parent ? parent.reasoning_effort : selection ? selection.reasoning_levels[0] : this.config.reasoning_effort);
-    this.runtimeModels.resolve(model, effort, parent?.model_binding);
+    const effort = options.reasoning_effort ?? (parent ? parent.reasoning_effort : selection ? selection.reasoning_levels[0] : this.controlPlane.taskSnapshot(roundId)?.legacy_effort ?? this.config.reasoning_effort);
+    this.resolveModel(model, effort, parent?.model_binding, roundId);
     this.controlPlane.assertDispatch(roundId, model);
     let inheritedContext = '';
     let contextSource: AgentRecord['context_source'] = null;
@@ -426,7 +451,7 @@ export class AgentManager {
       ...(selection ? { model_binding: this.runtimeModels.bind(selection) } : {}),
       session_id: 'session-' + randomUUID().replaceAll('-', ''), session_ready: false,
       status: 'starting', created_at: now, updated_at: now, turn: 0,
-      pending: [this.message(prompt, 'spawn', roundId)], active_message: null,
+      pending: [this.message(prompt, 'spawn', roundId)], active_message: null, last_round_id: roundId,
       pause_requested: false, queue_revision: 1,
       final_response: '', finish_reason: null, error: null,
       fork_turns: forkTurns, context_source: contextSource, inherited_context: inheritedContext, context_applied: false, history_available: true, history: [],
@@ -466,7 +491,7 @@ export class AgentManager {
     this.assertAvailable();
     const agent = this.resolve(target);
     if (!this.workers.has(agent.id) && !agent.pause_requested) {
-      this.requireSlot(!agent.parent_id);
+      this.requireSlot(!agent.parent_id, roundId);
       agentDirectory(this.config, agent.cwd);
     }
     const message = this.enqueue(agent, text, 'followup', roundId);
@@ -504,7 +529,7 @@ export class AgentManager {
     if (worker?.stop || agent.status === 'stopping') throw new DshError('STOPPING', 'Agent is stopping.');
     const previous_status = agent.status;
     if (agent.pause_requested) {
-      if (!worker && agent.pending.length) { this.requireSlot(!agent.parent_id); this.assertExecution(agent, agent.pending[0]!.round_id ?? this.controlPlane.currentRound); agentDirectory(this.config, agent.cwd); }
+      if (!worker && agent.pending.length) { this.requireSlot(!agent.parent_id, agent.pending[0]!.round_id ?? undefined); this.assertExecution(agent, agent.pending[0]!.round_id ?? this.controlPlane.currentRound); agentDirectory(this.config, agent.cwd); }
       agent.pause_requested = false;
       if (worker) this.setStatus(agent, worker.backend ? 'running' : 'starting');
       else if (agent.pending.length) {
@@ -658,11 +683,14 @@ export class AgentManager {
     try {
       // Messages accepted during shutdown of an idle runtime also run before releasing this slot.
       while (!worker.stop && !agent.pause_requested && agent.pending.length) {
-        this.assertExecution(agent, agent.pending[0]!.round_id ?? this.controlPlane.currentRound);
+        const nextRound = agent.pending[0]!.round_id ?? this.controlPlane.currentRound;
+        this.assertTurnRootCapacity(agent, nextRound);
+        this.assertExecution(agent, nextRound);
         const input = agent.pending.shift()!;
         input.round_id ??= this.controlPlane.currentRound;
         agent.queue_revision++;
         agent.active_message = input;
+        agent.last_round_id = input.round_id;
         agent.history.push({ role: 'user', text: input.text });
         agent.turn++;
         agent.final_response = '';
@@ -803,12 +831,12 @@ export class AgentManager {
   private snapshot(agent: AgentRecord) {
     return {
       id: agent.id, task_name: agent.task_name, path: agent.path, parent_id: agent.parent_id,
-      status: agent.status, cwd: agent.cwd, model: agent.model, reasoning_effort: agent.reasoning_effort,
+      status: agent.status, online: this.workers.has(agent.id), cwd: agent.cwd, model: agent.model, reasoning_effort: agent.reasoning_effort,
       session_id: agent.session_id, session_ready: agent.session_ready, turn: agent.turn,
       pause_requested: agent.pause_requested, queue_revision: agent.queue_revision,
       fork_turns: agent.fork_turns, inherited_context_chars: agent.inherited_context.length,
       max_depth: agent.max_depth, max_children: agent.max_children, children_count: this.childCount(agent.id),
-      effective_max_depth: this.depth(agent), effective_max_children: Math.min(agent.max_children, this.controlPlane.policy.max_children_user),
+      effective_max_depth: this.depth(agent), effective_max_children: Math.min(agent.max_children, this.controlPlane.policyFor(this.agentRound(agent.id)).max_children_user),
       context_source: agent.context_source,
       notify_on_completion: agent.notify_on_completion, reply_thread_id: agent.reply_thread_id,
       delivery: (() => { const item = this.deliveries.findLast(item => item.agent_id === agent.id); return item ? {

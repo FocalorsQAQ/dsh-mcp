@@ -11,13 +11,11 @@ import { FloatingOrb } from './floating-orb';
 import './style.css';
 import './density.css';
 import './language.css';
-import './sessions.css';
+import './dashboard.css';
 
-const blank: DesktopState = { connection: { status: 'connecting', workspace_name: t("workspace.current"), workspace_root: '', snapshot: null, message: t("connection.connecting") }, window: { compact: false, floating: false } };
+const blank: DesktopState = { global_control: { available: false, state: null, error: 'loading' }, runtime: { online_count: 0, works: [] }, workspace_name: '', workspace_root: '', window: { compact: false, floating: false } };
 const defaults: ControlPolicy = { enabled: false, max_root_agents: 4, allow_secondary: false, max_depth_user: 1,
   max_children_user: 1, round_budget: null, task_budget: null, billing_currency: 'USD' };
-const formatMoney = (value: number) => value.toFixed(2);
-const formatTokens = (value?: number) => value === undefined ? '—' : new Intl.NumberFormat('en-US').format(value);
 
 function Toggle({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
   return <button className={'toggle ' + (checked ? 'on' : '')} role="switch" aria-label={label} aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}><span /></button>;
@@ -63,16 +61,10 @@ function Budget({ label, value, currency, disabled, onChange }: { label: string;
   </div>;
 }
 
-function CurrencyPair({ value, missing = false }: { value?: Money; missing?: boolean }) {
-  if (!value || missing) return <span className="empty-value">—</span>;
-  return <span className="currency-pair">{formatMoney(value[0])} USD + {formatMoney(value[1])} CNY</span>;
-}
-
 function App() {
   const [state, setState] = useState(blank);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<LocalizedNotice | null>(null);
-  const [tokenScope, setTokenScope] = useState<'last' | 'total'>('last');
   const current = useRef(state); current.current = state;
   const busy = useRef(false);
   useEffect(() => {
@@ -80,79 +72,49 @@ function App() {
     void window.dsh.getState().then(result => { if (result.ok) setState(result.value); });
     return off;
   }, []);
-  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), notice.error ? 6000 : 3200); return () => clearTimeout(timer); }, [notice]);
-  const connection = state.connection;
-  const snapshot = connection.snapshot;
-  const settings = snapshot?.settings ?? defaults;
-  const connected = connection.status === 'connected';
+  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 6000); return () => clearTimeout(timer); }, [notice]);
   const global = state.global_control;
-  const globalReady = global?.available === true;
-  const globalEnabled = globalReady && global.state.enabled;
-  const unavailable = !connected || saving;
-  const metrics = snapshot?.metrics;
-  const usage = tokenScope === 'last' ? metrics?.last_api_tokens : metrics?.tokens;
-  const period = snapshot?.pricing.current_period;
-  const priceLabel = period === 'off_peak' ? t("pricing.offPeak") : period === 'peak' ? t("pricing.peak") : t("pricing.conservative");
+  const ready = global.available;
+  const settings = ready ? global.state.settings : defaults;
+  const unavailable = !ready || saving;
   const apply = async (patch: Partial<ControlPolicy>) => {
-    if (busy.current || current.current.connection.status !== 'connected') return;
-    busy.current = true; setSaving(true); setNotice(null);
-    try {
-      const result = await window.dsh.updateSettings(patch, current.current.connection.snapshot!.revision, current.current.session_id);
-      if (result.ok) setState(result.value);
-      else {
-        setNotice({ key: 'error.' + result.code, error: true });
-        const fresh = await window.dsh.getState(); if (fresh.ok) setState(fresh.value);
-      }
-    } catch { setNotice({ key: 'error.offline', error: true }); }
-    finally { busy.current = false; setSaving(false); }
-  };
-  const action = async (name: 'compact' | 'minimize' | 'close') => { const result = await window.dsh.windowAction(name); if (result.ok) setState(result.value); };
-  const setEnabled = async (enabled: boolean) => {
     const latest = current.current.global_control;
-    if (busy.current || !latest?.available) return;
+    if (busy.current || !latest.available) return;
     busy.current = true; setSaving(true); setNotice(null);
     try {
-      const result = await window.dsh.setOutsourcingEnabled(enabled, latest.state.revision);
+      const result = await window.dsh.updateSettings(patch, latest.state.revision);
       if (result.ok) setState(result.value);
       else { setNotice({ key: 'error.' + result.code, error: true }); const fresh = await window.dsh.getState(); if (fresh.ok) setState(fresh.value); }
     } catch { setNotice({ key: 'error.GLOBAL_CONTROL_STORAGE', error: true }); }
     finally { busy.current = false; setSaving(false); }
   };
+  const action = async (name: 'compact' | 'minimize' | 'close') => { const result = await window.dsh.windowAction(name); if (result.ok) setState(result.value); };
   const placeholder = async (name: 'api_keys' | 'models') => {
-      const result = await window.dsh.openManagementWindow(name);
-      if (!result.ok) setNotice({ key: 'error.' + result.code, error: true });
+    const result = await window.dsh.openManagementWindow(name);
+    if (!result.ok) setNotice({ key: 'error.' + result.code, error: true });
   };
   return <div className={'app-shell ' + (state.window.compact ? 'compact' : '')}>
     <header className="titlebar">
-      <div className="brand">{t("app.title")}</div>
+      <div className="brand">{t('app.title')}</div>
       <div className="window-controls">
-        <button aria-label={state.window.compact ? t("window.expand") : t("window.compact")} title={state.window.compact ? t("window.expand") : t("window.compact")} onClick={() => void action('compact')}><Icon name={state.window.compact ? 'expand' : 'collapse'} size={14} /></button>
-        <button aria-label={t("window.minimizeAria")}  title={t("window.minimize")}  onClick={() => void action('minimize')}><Icon name="minus" size={14} /></button>
-        <button className="close-button" aria-label={t("window.close")}  title={t("window.closeHint")}  onClick={() => void action('close')}><Icon name="close" size={14} /></button>
+        <button aria-label={t(state.window.compact ? 'window.expand' : 'window.compact')} onClick={() => void action('compact')}><Icon name={state.window.compact ? 'expand' : 'collapse'} size={14} /></button>
+        <button aria-label={t('window.minimizeAria')} title={t('window.minimize')} onClick={() => void action('minimize')}><Icon name="minus" size={14} /></button>
+        <button className="close-button" aria-label={t('window.close')} onClick={() => void action('close')}><Icon name="close" size={14} /></button>
       </div>
     </header>
-
-    {(state.sessions ?? []).some(item => item.id !== 'legacy') && <div className="session-picker">
-      <label htmlFor="chat-session">{t('session.select')}</label>
-      <select id="chat-session" value={state.session_id} disabled={saving} onChange={async event => {
-        const result = await window.dsh.selectSession(event.target.value);
-        if (result.ok) { setNotice(null); setState(result.value); }
-        else setNotice({ key: 'error.' + result.code, error: true });
-      }}>
-        {state.sessions?.map(item => <option key={item.id} value={item.id} title={(item.title ? item.title + '\n' : '') + item.id}>
-          {item.id === 'legacy' ? t('session.legacy') : item.title ? item.title + ((state.sessions?.filter(other => other.title === item.title).length ?? 0) > 1 ? ' · ' + item.id.slice(-8) : '') : t('session.chat', { id: item.id.slice(0, 8) }) + ' · ' + item.workspace.split(/[\\/]/).at(-1)}
-        </option>)}
-      </select>
-    </div>}
-    <main key={state.session_id}>
-      <section className={'hero ' + (globalEnabled ? 'enabled' : '')}>
-        <div className="hero-line"><div className="hero-heading"><span className="hero-symbol"><Icon name="agents" size={23} /></span><div><h1>{globalEnabled ? t("outsourcing.enabled") : t("outsourcing.disabled")}</h1><p>{!globalReady ? t("error.GLOBAL_CONTROL_STORAGE") : globalEnabled ? t("outsourcing.enabledHint") : t("outsourcing.disabledHint")}</p></div></div><Toggle label={t("outsourcing.enable")} checked={globalEnabled} disabled={!globalReady || saving} onChange={enabled => void setEnabled(enabled)} /></div>
-        <div className="hero-status"><span className={'connection-indicator ' + connection.status}><span className="dot" />{connected ? t("connection.connected") : connection.status === 'connecting' ? t("connection.pending") : t("connection.disconnected")}</span><span className="status-separator" /><span>{snapshot ? t("runtime.active", { count: snapshot.runtime.active_root_count, limit: settings.max_root_agents }) : t("agents.waiting")}</span><button className="inline-icon" aria-label={t("connection.reconnect")}  title={t("connection.reconnectHint")}  onClick={() => void window.dsh.reconnect()}><Icon name="refresh" size={13} /></button></div>
-        <p className="global-switch-note">{t('outsourcing.refreshHint')}</p>
+    <main>
+      <section className={'hero ' + (settings.enabled ? 'enabled' : '')}>
+        <div className="hero-line"><div className="hero-heading"><span className="hero-symbol"><Icon name="agents" size={23} /></span><div><h1>{t('dashboard.settings')}</h1><p>{t(settings.enabled ? 'dashboard.enabled' : 'dashboard.disabled')}</p></div></div><Toggle label={t('outsourcing.enable')} checked={settings.enabled} disabled={unavailable} onChange={enabled => void apply({ enabled })} /></div>
+        <p className="global-switch-note">{t('dashboard.snapshotHint')}</p>
       </section>
-
+      <details className="online-details" data-testid="online-details">
+        <summary><Icon name="activity" size={15} /><strong>{t('dashboard.online', { count: state.runtime.online_count })}</strong><span>{t('dashboard.details')}</span></summary>
+        {state.runtime.works.length ? state.runtime.works.map(work => <section className="work-group" key={work.id}>
+          <h2>{work.title}</h2>
+          {work.agents.map(agent => <div className="agent-detail" key={agent.id}><span title={agent.path}>{agent.name}</span><span>{agent.model}</span><small>{t('dashboard.effort')}: {agent.reasoning_effort ?? t('dashboard.defaultEffort')}</small></div>)}
+        </section>) : <p className="online-empty">{t('dashboard.empty')}</p>}
+      </details>
       <div className="expanded-content">
-        {!connected && <div className="connection-note" role="status"><span>{t(connection.status === "connecting" ? "connection.connecting" : snapshot ? "connection.lost" : "connection.waiting")}</span>{snapshot && <small>{t("connection.stale")}</small>}</div>}
         <section className="control-section">
           <div className="section-heading"><span><Icon name="agents" size={15} />{t("agents.title")}</span><span className="quiet">{t("agents.userLimit")}</span></div>
           <div className="setting-row"><div><label>{t("agents.roots")}</label><p>{t("agents.rootsHint")}</p></div><NumberField label={t("agents.rootCount")}  value={settings.max_root_agents} max={32} disabled={unavailable} onChange={max_root_agents => void apply({ max_root_agents })} /></div>
@@ -171,25 +133,12 @@ function App() {
           <div className="budget-foot"><span title={t("billing.hint")} >{t("billing.title")}</span><div className="segmented small" aria-label={t("billing.title")} >{(['USD', 'CNY'] as const).map(currency => <button key={currency} aria-label={t("billing.use", { currency })} aria-pressed={settings.billing_currency === currency} disabled={unavailable} onClick={() => void apply({ billing_currency: currency })}>{currency}</button>)}</div></div>
         </section>
 
-        <section className="usage-card">
-          <div className="section-heading"><span><Icon name="activity" size={15} />{t("usage.title")}</span><span className="price-badge" title={t("pricing.hint")} ><Icon name="clock" size={11} />{snapshot ? priceLabel : t("pricing.waiting")}</span></div>
-          <div className="cost-grid"><div><label>{t("usage.taskCost")}<span className="estimate">{t("usage.estimated")}</span></label><strong><CurrencyPair value={metrics?.task_cost} /></strong></div><div className="last-cost"><label>{t("usage.lastApi")}</label><strong><CurrencyPair value={metrics?.last_api_cost} missing={!metrics?.last_api_request_id} /></strong></div></div>
-          <div className="tokens-heading"><span>{t("tokens.title")}</span><div className="segmented"><button aria-pressed={tokenScope === 'last'} onClick={() => setTokenScope('last')}>{t("tokens.last")}</button><button aria-pressed={tokenScope === 'total'} onClick={() => setTokenScope('total')}>{t("tokens.total")}</button></div></div>
-          <div className="token-grid"><div><span>{t("tokens.miss")}</span><strong data-testid="token-miss">{formatTokens(usage?.input_cache_miss)}</strong></div><div><span>{t("tokens.hit")}</span><strong data-testid="token-hit">{formatTokens(usage?.input_cache_hit)}</strong></div><div><span>{t("tokens.output")}</span><strong data-testid="token-output">{formatTokens(usage?.output)}</strong></div></div>
-          {metrics?.last_api_status === 'unknown' && <p className="usage-note">{t("usage.unknown")}</p>}
-          {metrics?.accounting_blocked && <p className="usage-note error">{t("usage.blocked")}</p>}
-          {snapshot?.pricing.catalog?.files.filter(file => !file.valid || file.expired).map(file =>
-            <p className="usage-note error" key={file.provider} title={file.path + (file.error ? '\n' + file.error : '')}>
-              {t(file.valid ? 'pricing.fileExpired' : 'pricing.fileInvalid', { provider: t('pricing.provider.' + file.provider) })}
-            </p>)}
-        </section>
-
         <div className="management-buttons"><button aria-label={t("management.keysTitle")} onClick={() => void placeholder('api_keys')}><Icon name="key" /><span>{t("management.keys")}</span><small>{t("management.manage")}</small><Icon name="arrow" size={12} /></button><button aria-label={t("management.modelsTitle")} onClick={() => void placeholder('models')}><Icon name="model" /><span>{t("management.models")}</span><small>{t("management.manage")}</small><Icon name="arrow" size={12} /></button></div>
+
       </div>
-      <div className="compact-summary"><span>{t("usage.compactCost")}</span><CurrencyPair value={metrics?.task_cost} /><span className="compact-price">{snapshot ? priceLabel : '—'}</span></div>
     </main>
-    <footer><span className="project-name" title={connection.workspace_root}><Icon name="folder" size={13} />{connection.workspace_name}</span><LanguageSelector /><span className={'save-state ' + (saving ? 'saving' : '')}>{saving ? <><span className="spinner" />{t("save.pending")}</> : connected ? <><Icon name="check" size={12} />{t("save.synced")}</> : t("connection.retry")}</span></footer>
-    {notice && <div className={'toast ' + (notice.error ? 'error' : '')} role={notice.error ? 'alert' : 'status'}><Icon name={notice.error ? 'activity' : 'check'} size={14} /><span>{t(notice.key, notice.parameters)}{notice.suffix}</span><button aria-label={t("notice.close")}  onClick={() => setNotice(null)}><Icon name="close" size={12} /></button></div>}
+    <footer><span className="project-name">{t('dashboard.future')}</span><LanguageSelector /><span className={'save-state ' + (saving ? 'saving' : '')}>{saving ? t('save.pending') : ready ? <><Icon name="check" size={12} />{t('save.synced')}</> : t('error.GLOBAL_CONTROL_STORAGE')}</span></footer>
+    {notice && <div className="toast error" role="alert"><span>{t(notice.key, notice.parameters)}</span><button aria-label={t('notice.close')} onClick={() => setNotice(null)}><Icon name="close" size={12} /></button></div>}
   </div>;
 }
 

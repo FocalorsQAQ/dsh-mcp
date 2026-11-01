@@ -16,12 +16,12 @@ export function scopedTools(manager: AgentManager, callerId: string): AgentTools
     }
     return agent.id;
   };
-  return {
+  const scoped: AgentTools = {
     listModel: () => manager.listModel(callerId), listEffort: model => manager.listEffort(model, callerId),
     policySource: {
       agentInfo: () => ({ ...manager.controlPlane.agentInfo(manager.agentRound(callerId)),
         selected_models: manager.listModel(callerId).models, model_selection_available: true }),
-      assertEnabled: () => manager.controlPlane.assertEnabled(),
+      assertEnabled: () => manager.controlPlane.assertEnabled(manager.agentRound(callerId)),
       subscribe: listener => manager.controlPlane.subscribe(listener),
     },
     spawn(options) {
@@ -52,4 +52,10 @@ export function scopedTools(manager: AgentManager, callerId: string): AgentTools
       return manager.wait({ ...options, targets }, signal);
     },
   };
+  return new Proxy(scoped, {
+    get(target, key) {
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? (...args: unknown[]) => manager.controlPlane.withRound(manager.agentRound(callerId), () => Reflect.apply(value, target, args)) : value;
+    },
+  });
 }

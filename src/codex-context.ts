@@ -117,3 +117,20 @@ export function readCodexCaller(options: { threadId: string; codexHome?: string;
   if (!turnId) throw new DshError('CODEX_IDENTITY', 'The callback chat has no recorded turn identity.');
   return { threadId: options.threadId, turnId };
 }
+
+/** Host identity fallback only. Does not export messages or change worker workspace permissions. */
+export function readCodexTurnId(options: { threadId: string; codexHome?: string }): string {
+  const data = readRolloutSnapshot(options), lines = data.split('\n');
+  if (!data.endsWith('\n')) lines.pop();
+  let id: string | undefined, turn: string | undefined;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const entry = JSON.parse(line);
+    if (entry.type === 'session_meta') id = entry.payload?.id;
+    if (entry.type === 'turn_context' || (entry.type === 'event_msg' && entry.payload?.type === 'task_started')) {
+      if (typeof entry.payload?.turn_id === 'string') turn = entry.payload.turn_id;
+    }
+  }
+  if (id !== options.threadId || !turn || !uuid.test(turn)) throw new DshError('TASK_SNAPSHOT_REQUIRED', 'Cannot identify the host turn. Enable the submission hook and publish a new task.');
+  return turn;
+}

@@ -208,5 +208,15 @@
   "session.select": "当前聊天",
   "session.chat": "聊天 {id}",
   "session.legacy": "升级前的会话",
-  "error.UI_SESSION": "聊天已切换或暂不可用，请重新确认操作。"
+  "error.UI_SESSION": "聊天已切换或暂不可用，请重新确认操作。",
+  "dashboard.settings": "下一轮任务配置",
+  "dashboard.enabled": "外包将在提交任务时启用",
+  "dashboard.disabled": "外包将在提交任务时禁用",
+  "dashboard.snapshotHint": "提交任务时保存配置快照；后续修改只影响新任务，正在运行的任务保持原设置。",
+  "dashboard.online": "{count} 个子代理在线",
+  "dashboard.details": "展开明细",
+  "dashboard.effort": "推理强度",
+  "dashboard.defaultEffort": "默认",
+  "dashboard.empty": "当前没有在线子代理",
+  "dashboard.future": "适用于后续提交"
 }

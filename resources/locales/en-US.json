@@ -208,5 +208,15 @@
   "session.select": "Current chat",
   "session.chat": "Chat {id}",
   "session.legacy": "Session before upgrade",
-  "error.UI_SESSION": "The chat changed or is unavailable. Please review the action again."
+  "error.UI_SESSION": "The chat changed or is unavailable. Please review the action again.",
+  "dashboard.settings": "Next task settings",
+  "dashboard.enabled": "Outsourcing enabled at submission",
+  "dashboard.disabled": "Outsourcing disabled at submission",
+  "dashboard.snapshotHint": "Settings are captured when you submit a task. Later changes apply to new tasks; running tasks keep their original settings.",
+  "dashboard.online": "{count} subagents online",
+  "dashboard.details": "Show details",
+  "dashboard.effort": "Reasoning effort",
+  "dashboard.defaultEffort": "Default",
+  "dashboard.empty": "No subagents are online",
+  "dashboard.future": "For future submissions"
 }

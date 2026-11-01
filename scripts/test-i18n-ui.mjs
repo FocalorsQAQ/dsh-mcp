@@ -42,7 +42,7 @@ async function layout(page, containers) {
 }
 try {
   let control = await launch();
-  await control.getByRole('heading', { name: '外包已启用', exact: true }).waitFor();
+  await control.getByRole('heading', { name: '下一轮任务配置', exact: true }).waitFor();
   const api = await open(control, 'API 密钥管理', '管理你的 API');
   // Synthetic local credential only. No validation or upstream request is made.
   const added = await api.evaluate(() => window.dsh.apis.add({ name: 'Test connection', protocol: 'openai_responses',
@@ -52,7 +52,7 @@ try {
   await api.getByRole('button', { name: '新增 API', exact: true }).click();
   await api.getByLabel('API 名称', { exact: true }).fill('Unsaved name');
   await api.getByLabel('API key', { exact: true }).fill('unsaved-test-value');
-  await switchTo(control, '界面语言', 'en-US', 'Delegation enabled');
+  await switchTo(control, '界面语言', 'en-US', 'Next task settings');
   await api.getByRole('heading', { name: 'Manage your APIs', exact: true }).waitFor();
   assert.equal(await api.getByLabel('API name', { exact: true }).inputValue(), 'Unsaved name');
   assert.equal(await api.getByLabel('API key', { exact: true }).inputValue(), 'unsaved-test-value');
@@ -68,7 +68,7 @@ try {
   });
   await models.getByRole('button', { name: 'Verify and save', exact: true }).click();
   await models.getByRole('button', { name: 'Verify and save', exact: true }).waitFor();
-  await switchTo(control, 'Interface language', 'zh-CN', '外包已启用');
+  await switchTo(control, 'Interface language', 'zh-CN', '下一轮任务配置');
   await models.getByRole('heading', { name: '管理可用模型', exact: true }).waitFor();
   assert.equal(await models.getByLabel('模型 ID', { exact: true }).inputValue(), 'test-model');
   assert.equal(await models.getByLabel('思考强度分级', { exact: true }).inputValue(), 'low, medium, high');
@@ -83,7 +83,7 @@ try {
   assert.equal(dialogs[1].title, '确认验证模型');
   await models.getByRole('button', { name: '保存', exact: true }).click();
   await models.getByText('模型已保存，尚未验证。', { exact: true }).waitFor();
-  await switchTo(control, '界面语言', 'en-US', 'Delegation enabled');
+  await switchTo(control, '界面语言', 'en-US', 'Next task settings');
   await models.getByText('Model saved without verification.', { exact: true }).waitFor();
   assert.deepEqual((await control.evaluate(() => window.dsh.language.set('../../invalid'))), { ok: false, code: 'UI_LOCALE' });
   assert.equal((await control.evaluate(() => window.dsh.language.get())).value, 'en-US');
@@ -97,20 +97,20 @@ try {
     const window = BrowserWindow.getAllWindows().find(item => !new URL(item.webContents.getURL()).hash);
     window.setSize(400, 840);
   });
-  await layout(control, ['main', 'footer', '.hero-status', '.budget-section', '.usage-card']);
+  await layout(control, ['main', 'footer', '.online-details', '.budget-section']);
   await control.screenshot({ path: join(directory, 'control-english-narrow.png') });
   await desktop.close(); desktop = undefined;
   control = await launch();
-  await control.getByRole('heading', { name: 'Delegation enabled', exact: true }).waitFor();
+  await control.getByRole('heading', { name: 'Next task settings', exact: true }).waitFor();
   assert.equal(await control.getByRole('combobox', { name: 'Interface language' }).inputValue(), 'en-US');
   await bridge.close();
-  await control.locator('.connection-indicator.disconnected').waitFor();
-  await control.getByRole('heading', { name: 'Delegation enabled', exact: true }).waitFor();
-  await switchTo(control, 'Interface language', 'zh-CN', '外包已启用');
+  assert(await control.getByRole('switch', { name: 'Enable delegation' }).isEnabled());
+  await control.getByRole('heading', { name: 'Next task settings', exact: true }).waitFor();
+  await switchTo(control, 'Interface language', 'zh-CN', '下一轮任务配置');
   await control.screenshot({ path: join(directory, 'control-chinese-offline.png') });
   await desktop.close(); desktop = undefined;
   control = await launch('en-US');
-  await control.getByRole('heading', { name: 'Delegation enabled', exact: true }).waitFor();
+  await control.getByRole('heading', { name: 'Next task settings', exact: true }).waitFor();
   assert.deepEqual(errors, []);
   const report = { ok: true, languages: ['zh-CN', 'en-US'], verified: ['live switching across three windows', 'unsaved forms preserved',
     'masked key input preserved', 'localized confirmation dialogs (cancelled)', 'existing notices translated', 'preference survives restart',

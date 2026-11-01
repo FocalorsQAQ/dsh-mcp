@@ -29,7 +29,7 @@ const upgradeIndex = process.argv.indexOf('--upgrade-from');
 const upgradeFrom = upgradeIndex < 0 ? undefined : process.argv[upgradeIndex + 1];
 let previousConfig;
 if (upgradeIndex >= 0) {
-  assert.match(upgradeFrom ?? '', /^0\.1\.[01345]$/);
+  assert.match(upgradeFrom ?? '', /^0\.1\.[013456]$/);
   const baselineArgs = args.filter(arg => !arg.startsWith('/LOG='));
   await run(testInstaller(upgradeFrom, directory),
     [...baselineArgs, `/LOG=${join(directory, 'baseline-install.log')}`], { env: installEnvironment });
@@ -90,7 +90,7 @@ writeFileSync(join(directory,'ui-autostart.log'),autoStart);
 writeFileSync(join(directory,'orb-ui.log'), await run(process.execPath,[resolve('scripts/test-orb-ui.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 writeFileSync(join(directory,'multi-client.log'), await run(process.execPath,[resolve('scripts/test-multi-client.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 writeFileSync(join(directory,'session-ui.log'), await run(process.execPath,[resolve('scripts/test-session-ui.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
-if (process.env.DSH_TEST_CODEX_EXE) writeFileSync(join(directory,'codex-host.log'), await run(process.execPath,[resolve('scripts/test-codex-host.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
+if (process.env.DSH_TEST_CODEX_EXE) writeFileSync(join(directory,'codex-host.log'), await run(process.execPath,[resolve('scripts/test-task-hook.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 const smoke=await run(process.execPath,[resolve('scripts/smoke.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}});
 writeFileSync(join(directory,'smoke.log'),smoke);
 writeFileSync(join(data,'keep-on-uninstall.txt'),'user data must survive uninstall');

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { DshError } from './types.ts';
 import { ModelCatalog } from './models.ts';
 import { PythonBilling } from './billing.ts';
@@ -7,7 +8,7 @@ import type { RuntimeModels } from './runtime-models.ts';
 import type { OutsourcingSwitch } from './global-control.ts';
 import { DEEPSEEK_SCHEDULE_ID, pricingSchedule, requestPricePeriod } from './pricing-time.ts';
 import { controlStateSchema, policyPatchSchema, policySchema, tokenUsageSchema,
-  type ControlPolicy, type ControlState, type Money, type RequestCharge, type TokenUsage, type AgentPolicyView } from './control-contract.ts';
+  type ControlPolicy, type ControlState, type Money, type RequestCharge, type TokenUsage, type AgentPolicyView, type TaskSnapshot } from './control-contract.ts';
 
 const ZERO = (): Money => [0, 0];
 const zeroTokens = (): TokenUsage => ({ input_cache_miss: 0, input_cache_hit: 0, output: 0 });
@@ -26,6 +27,7 @@ const remaining = (limit: Money | null, used: Money): Money | null => limit === 
 export class ControlPlane {
   private state: ControlState;
   private changes = new EventEmitter();
+  private requestRound = new AsyncLocalStorage<string>();
   selection?: RuntimeModels;
   constructor(initial: ControlPolicy, saved: ControlState | undefined, private readonly persist: () => void,
     private readonly now: () => number = () => Date.now(), private readonly billing = new PythonBilling(), readonly models = new ModelCatalog(),
@@ -41,9 +43,29 @@ export class ControlPlane {
     for (const request of this.state.requests.filter(item => item.status === 'reserved')) this.finish(request, null, 'unknown');
   }
   exportState(): ControlState { return structuredClone(this.state); }
-  get policy(): ControlPolicy { return { ...structuredClone(this.state.policy), ...(this.globalControl ? { enabled: this.globalControl.enabled } : {}) }; }
+  get policy(): ControlPolicy { return this.policyFor(this.currentRound); }
+  policyFor(roundId: string): ControlPolicy {
+    const snapshot = this.round(roundId).snapshot;
+    return snapshot ? structuredClone(snapshot.settings) : { ...structuredClone(this.state.policy), ...(this.globalControl ? { enabled: this.globalControl.enabled } : {}) };
+  }
+  taskSnapshot(roundId = this.currentRound): TaskSnapshot | undefined { return structuredClone(this.round(roundId).snapshot); }
+  withRound<T>(roundId: string, action: () => T): T { this.round(roundId); return this.requestRound.run(roundId, action); }
+  withSnapshot<T>(snapshot: TaskSnapshot, action: () => T): T {
+    let round = this.state.rounds.find(item => item.id === snapshot.turn_id);
+    if (round?.snapshot && JSON.stringify(round.snapshot) !== JSON.stringify(snapshot)) throw new DshError('TASK_SNAPSHOT_CONFLICT', 'A submitted turn snapshot cannot be replaced.');
+    if (round && !round.snapshot && (round.spent_nano.some(Boolean) || this.state.requests.some(item => item.round_id === round!.id))) throw new DshError('TASK_SNAPSHOT_CONFLICT', 'An existing budget round cannot be replaced.');
+    let changed = false;
+    if (!round) { round = { id: snapshot.turn_id, spent_nano: ZERO(), snapshot: structuredClone(snapshot) }; this.state.rounds.push(round); changed = true; }
+    else if (!round.snapshot) { round.snapshot = structuredClone(snapshot); changed = true; }
+    const current = this.round(this.state.current_round_id).snapshot;
+    if (this.state.current_round_id !== round.id && (!current || current.captured_at <= snapshot.captured_at)) {
+      this.state.current_round_id = round.id; changed = true;
+    }
+    if (changed) this.commit();
+    return this.requestRound.run(round.id, action);
+  }
   globalControlChanged(): void { this.changes.emit('change'); }
-  get currentRound(): string { return this.state.current_round_id; }
+  get currentRound(): string { return this.requestRound.getStore() ?? this.state.current_round_id; }
   subscribe(listener: () => void): () => void {
     const safe = () => { try { listener(); } catch { /* Observer errors cannot refund or bypass reservations. */ } };
     this.changes.on('change', safe); return () => this.changes.off('change', safe);
@@ -54,6 +76,7 @@ export class ControlPlane {
   }
   updatePolicy(patch: unknown, expectedRevision: number) {
     this.cas(expectedRevision);
+    if (this.taskSnapshot()) throw new DshError('TASK_SETTINGS_FROZEN', 'This turn uses a submission snapshot. Edit shared defaults for the next task.');
     const parsed = policyPatchSchema.parse(patch);
     if (this.globalControl && parsed.enabled !== undefined) throw new DshError('GLOBAL_CONTROL_SCOPE', 'Use setOutsourcingEnabled with the global revision to change the shared switch.');
     this.state.policy = policySchema.parse({ ...this.state.policy, ...parsed });
@@ -74,8 +97,10 @@ export class ControlPlane {
     const result = await this.models.refresh({ apiKey: process.env.DEEPSEEK_API_KEY ?? '' });
     this.commit(); return result;
   }
-  assertEnabled(): void {
-    if (this.globalControl) this.globalControl.assertEnabled();
+  assertEnabled(roundId = this.currentRound): void {
+    if (this.taskSnapshot(roundId)) {
+      if (!this.policyFor(roundId).enabled) throw new DshError('OUTSOURCING_DISABLED', '外包已禁用（本轮任务快照）');
+    } else if (this.globalControl) this.globalControl.assertEnabled();
     else if (!this.state.policy.enabled) throw new DshError('OUTSOURCING_DISABLED', '外包已禁用');
   }
   private round(id: string) {
@@ -88,19 +113,21 @@ export class ControlPlane {
       .reduce((sum, item) => add(sum, item.reserved_nano), ZERO());
   }
   private available(roundId: string): Money | null {
-    const policy = this.state.policy;
+    const policy = this.policyFor(roundId);
     return min(remaining(policy.task_budget, add(this.state.task_spent_nano, this.reserved())),
       remaining(policy.round_budget, add(this.round(roundId).spent_nano, this.reserved(roundId))));
   }
   assertDispatch(roundId: string, model: string) {
-    this.assertEnabled(); this.round(roundId);
+    this.assertEnabled(roundId); this.round(roundId);
+    const snapshot = this.taskSnapshot(roundId);
+    if (snapshot && !(snapshot.models?.map(row => row.model_id) ?? [snapshot.legacy_model]).includes(model)) throw new DshError('MODEL_DISABLED', 'The model is not in this task submission snapshot.');
     if (this.state.accounting_blocked) throw new DshError('ACCOUNTING_BLOCKED', 'Provider usage exceeded its reviewed limits; new API calls are blocked.');
     const info = this.models.get(model);
     if (info?.pricing_error) throw new DshError('PRICING_INVALID', info.pricing_error);
     if (!info?.pricing || !info.context_window || !info.max_output_tokens) throw new DshError('MODEL_UNPRICED', 'No reviewed request limit and price for model: ' + model);
     if (this.now() >= Date.parse(info.pricing.valid_until)) throw new DshError('PRICING_EXPIRED', 'Refresh the reviewed price catalog before making paid requests.');
     const available = this.available(roundId);
-    const billingCurrency = this.selection?.currency(model) ?? this.state.policy.billing_currency;
+    const billingCurrency = this.selection?.currency(model, this.taskSnapshot(roundId)?.models) ?? this.policyFor(roundId).billing_currency;
     if (info.billing_currencies && !info.billing_currencies.includes(billingCurrency)) throw new DshError('MODEL_UNPRICED', 'No reviewed price for this billing currency.');
     const currency = billingCurrency === 'USD' ? 0 : 1;
     if (available && available[currency] <= 0) throw new DshError('BUDGET_EXHAUSTED', 'The shared main-agent round or task budget is exhausted.');
@@ -109,7 +136,7 @@ export class ControlPlane {
   reserve(agentId: string, roundId: string, model: string, maxTokens: number) {
     const info = this.assertDispatch(roundId, model);
     if (!Number.isSafeInteger(maxTokens) || maxTokens <= 0) throw new DshError('INPUT', 'Invalid API max_tokens.');
-    const currency = this.selection?.currency(model) ?? this.state.policy.billing_currency;
+    const currency = this.selection?.currency(model, this.taskSnapshot(roundId)?.models) ?? this.policyFor(roundId).billing_currency;
     const available = this.available(roundId);
     const startedAt = new Date(this.now()).toISOString();
     const quote = this.billing.quote({ model, currency, rates: info.pricing![currency], input_limit: info.context_window!,
@@ -163,15 +190,16 @@ export class ControlPlane {
     this.state.requests = this.state.requests.filter(item => item.status === 'reserved' || retained.includes(item));
   }
   agentInfo(roundId = this.currentRound): AgentPolicyView {
-    const policy = this.policy;
+    const policy = this.policyFor(roundId), snapshot = this.taskSnapshot(roundId);
     const effective = min(policy.round_budget === null ? null : nano(policy.round_budget), remaining(policy.task_budget, this.state.task_spent_nano));
     const available = this.available(roundId);
     return { enabled: policy.enabled, message: policy.enabled ? '外包可用；预算由服务端强制执行。' : '外包已禁用',
       max_root_agents: policy.max_root_agents, allow_secondary: policy.allow_secondary,
       max_depth_user: policy.max_depth_user, max_children_user: policy.max_children_user,
       round_id: roundId, budget: effective === null ? null : wire(effective), available_budget: available === null ? null : wire(available),
-      selected_models: this.selection?.managed ? this.selection.selected().map(row => row.model_id) : null,
-      model_selection_available: !!this.selection?.managed };
+      selected_models: snapshot ? snapshot.models?.map(row => row.model_id) ?? [snapshot.legacy_model] : this.selection?.managed ? this.selection.selected().map(row => row.model_id) : null,
+      model_selection_available: !!snapshot || !!this.selection?.managed,
+      ...(snapshot ? { settings_revision: snapshot.settings_revision, captured_at: snapshot.captured_at, snapshot_locked: true } : {}) };
   }
   snapshot() {
     const last = this.state.last_request;

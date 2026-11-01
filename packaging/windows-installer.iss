@@ -37,6 +37,7 @@ Source: "{tmp}\{#CoreArchive}"; DestDir: "{app}"; Flags: external extractarchive
 Name: "{group}\DeepSeek Harness as Subagent"; Filename: "{app}\node_modules\electron\dist\electron.exe"; Parameters: """{app}\desktop\main.mjs"" --config ""{app}\dsh.config.json"""; WorkingDir: "{app}"
 Name: "{group}\Installation guide"; Filename: "https://github.com/FocalorsQAQ/dsh-mcp/blob/main/docs/install.md"
 Name: "{group}\Connect to Codex"; Filename: "{app}\Connect to Codex.cmd"; WorkingDir: "{app}"
+Name: "{group}\Review dsh task hook"; Filename: "{app}\Review task hook.cmd"; WorkingDir: "{app}"
 Name: "{group}\Uninstall"; Filename: "{uninstallexe}"
 
 [Run]
@@ -111,7 +112,7 @@ begin
       if Code <> 0 then
         SuppressibleMsgBox('The application is installed, but Codex registration needs attention. Existing Codex settings were preserved. See codex-registration-result.json in the installation folder, or use codex-mcp.toml to connect manually.', mbInformation, MB_OK, IDOK)
       else
-        WizardForm.FinishedLabel.Caption := 'Installation completed and dsh is registered with Codex. Restart Codex to load the tools. Add API keys and enable a model in the control window before running a task.';
+        WizardForm.FinishedLabel.Caption := 'Installation completed. Restart Codex, then open Review task hook.cmd and use /hooks to review and trust the dsh submission hook. Configure APIs, models and the next task budget in the control window before submitting a new task.';
     end;
   end;
 end;

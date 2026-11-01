@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "license": "MIT",
   "author": "FocalorsQAQ",
@@ -30,6 +30,14 @@
     "./global-control": {
       "types": "./dist/global-control.d.ts",
       "import": "./dist/global-control.js"
+    },
+    "./dashboard": {
+      "types": "./dist/dashboard.d.ts",
+      "import": "./dist/dashboard.js"
+    },
+    "./task-snapshot": {
+      "types": "./dist/task-snapshot.d.ts",
+      "import": "./dist/task-snapshot.js"
     },
     "./credentials": {
       "types": "./dist/credentials.d.ts",
@@ -78,7 +86,9 @@
     "test:model-ui": "node scripts/test-model-ui.mjs",
     "release:fetch": "node scripts/release/fetch-inputs.mjs",
     "release:stage": "node scripts/release/stage.mjs",
-    "release:audit": "node scripts/release/audit.mjs"
+    "release:audit": "node scripts/release/audit.mjs",
+    "test:dashboard-ui": "node scripts/test-dashboard-ui.mjs",
+    "test:task-hook": "node scripts/test-task-hook.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.2-alpha.2",

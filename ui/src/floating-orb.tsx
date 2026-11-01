@@ -11,12 +11,9 @@ export function FloatingOrb() {
     void window.dsh.getState().then(reply => { if (reply.ok) setState(reply.value); });
     return off;
   }, []);
-  const connected = state?.connection.status === 'connected';
-  const runtime = state?.connection.snapshot?.runtime;
-  const count = connected && runtime ? runtime.active_count : '—';
-  const selected = state?.sessions?.find(item => item.id === state.session_id);
-  const session = state?.session_id && state.session_id !== 'legacy' ? (selected?.title ?? t('session.chat', { id: state.session_id.slice(0, 8) })) + '\n' : '';
-  const title = session + (connected && runtime ? t('orb.tooltip', { count, limit: runtime.max_concurrent_agents }) : t('orb.disconnected'));
+  const connected = Boolean(state);
+  const count = state?.runtime.online_count ?? '—';
+  const title = t('dashboard.online', { count });
   const restore = () => void window.dsh.windowAction('restore');
   return <div className="orb-shell">
     <button className={'floating-orb ' + (connected ? 'online' : 'offline') + (typeof count === 'number' && count > 0 ? ' busy' : '')}

@@ -18,8 +18,10 @@ function fixture(original = '') {
 test('Codex registration preserves settings, backs up, is idempotent, and removes only its entry',()=>{
   const original='# keep this comment\nmodel = "existing"\n[mcp_servers.other]\ncommand = "other"\n';
   const f=fixture(original);assert.equal(f.call('register').status,'registered');assert(f.read().startsWith(original));
-  const backups=readdirSync(f.home).filter(x=>x.startsWith('config.toml.dsh-backup-'));assert.equal(backups.length,1);
-  assert.equal(readFileSync(join(f.home,backups[0]!),'utf8'),original);
+  const backups=readdirSync(f.home).filter(x=>x.startsWith('config.toml.dsh-backup-'));assert.equal(backups.length,2);
+  assert(backups.some(name=>readFileSync(join(f.home,name),'utf8')===original));
+  assert(f.read().includes('[[hooks.UserPromptSubmit.hooks]]'));
+  assert(!f.read().includes('bypass_hook_trust'));
   const registered=f.read();assert.equal(f.call('register').status,'already_registered');assert.equal(f.read(),registered);
   const extra='\n[extra]\nvalue = 1\n';writeFileSync(join(f.home,'config.toml'),registered+extra);
   assert.equal(f.call('unregister').status,'removed');assert.equal(f.read(),original+extra);
@@ -32,7 +34,7 @@ test('Codex registration never replaces an existing different dsh or malformed c
 test('Codex uninstall preserves user-edited and pre-existing matching entries',()=>{
   const f=fixture();assert.equal(f.call('register').status,'registered');
   const changed=f.read().replace('tool_timeout_sec = 75','tool_timeout_sec = 90');writeFileSync(join(f.home,'config.toml'),changed);
-  assert.equal(f.call('unregister').status,'changed_preserved');assert.equal(f.read(),changed);
+  assert.equal(f.call('unregister').status,'changed_preserved');assert.equal(f.read(),changed.split('\n# BEGIN dsh task snapshot hook')[0]);
   const g=fixture('[mcp_servers.dsh]\ncommand = "node"\nargs = ["dsh.js"]\ntool_timeout_sec = 75\n');
   assert.equal(g.call('register').status,'already_registered');assert.equal(g.call('unregister').status,'not_owned');
   assert(g.read().includes('[mcp_servers.dsh]'));
