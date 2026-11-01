@@ -85,6 +85,9 @@ function App() {
   const snapshot = connection.snapshot;
   const settings = snapshot?.settings ?? defaults;
   const connected = connection.status === 'connected';
+  const global = state.global_control;
+  const globalReady = global?.available === true;
+  const globalEnabled = globalReady && global.state.enabled;
   const unavailable = !connected || saving;
   const metrics = snapshot?.metrics;
   const usage = tokenScope === 'last' ? metrics?.last_api_tokens : metrics?.tokens;
@@ -104,6 +107,17 @@ function App() {
     finally { busy.current = false; setSaving(false); }
   };
   const action = async (name: 'compact' | 'minimize' | 'close') => { const result = await window.dsh.windowAction(name); if (result.ok) setState(result.value); };
+  const setEnabled = async (enabled: boolean) => {
+    const latest = current.current.global_control;
+    if (busy.current || !latest?.available) return;
+    busy.current = true; setSaving(true); setNotice(null);
+    try {
+      const result = await window.dsh.setOutsourcingEnabled(enabled, latest.state.revision);
+      if (result.ok) setState(result.value);
+      else { setNotice({ key: 'error.' + result.code, error: true }); const fresh = await window.dsh.getState(); if (fresh.ok) setState(fresh.value); }
+    } catch { setNotice({ key: 'error.GLOBAL_CONTROL_STORAGE', error: true }); }
+    finally { busy.current = false; setSaving(false); }
+  };
   const placeholder = async (name: 'api_keys' | 'models') => {
       const result = await window.dsh.openManagementWindow(name);
       if (!result.ok) setNotice({ key: 'error.' + result.code, error: true });
@@ -125,15 +139,16 @@ function App() {
         if (result.ok) { setNotice(null); setState(result.value); }
         else setNotice({ key: 'error.' + result.code, error: true });
       }}>
-        {state.sessions?.map(item => <option key={item.id} value={item.id} title={item.id}>
-          {item.id === 'legacy' ? t('session.legacy') : t('session.chat', { id: item.id.slice(0, 8) }) + ' · ' + item.workspace.split(/[\\/]/).at(-1)}
+        {state.sessions?.map(item => <option key={item.id} value={item.id} title={(item.title ? item.title + '\n' : '') + item.id}>
+          {item.id === 'legacy' ? t('session.legacy') : item.title ? item.title + ((state.sessions?.filter(other => other.title === item.title).length ?? 0) > 1 ? ' · ' + item.id.slice(-8) : '') : t('session.chat', { id: item.id.slice(0, 8) }) + ' · ' + item.workspace.split(/[\\/]/).at(-1)}
         </option>)}
       </select>
     </div>}
     <main key={state.session_id}>
-      <section className={'hero ' + (settings.enabled && connected ? 'enabled' : '')}>
-        <div className="hero-line"><div className="hero-heading"><span className="hero-symbol"><Icon name="agents" size={23} /></span><div><h1>{!connected ? t("connection.waitTitle") : settings.enabled ? t("outsourcing.enabled") : t("outsourcing.disabled")}</h1><p>{!connected ? t("connection.syncHint") : settings.enabled ? t("outsourcing.enabledHint") : t("outsourcing.disabledHint")}</p></div></div><Toggle label={t("outsourcing.enable")}  checked={settings.enabled && connected} disabled={unavailable} onChange={enabled => void apply({ enabled })} /></div>
+      <section className={'hero ' + (globalEnabled ? 'enabled' : '')}>
+        <div className="hero-line"><div className="hero-heading"><span className="hero-symbol"><Icon name="agents" size={23} /></span><div><h1>{globalEnabled ? t("outsourcing.enabled") : t("outsourcing.disabled")}</h1><p>{!globalReady ? t("error.GLOBAL_CONTROL_STORAGE") : globalEnabled ? t("outsourcing.enabledHint") : t("outsourcing.disabledHint")}</p></div></div><Toggle label={t("outsourcing.enable")} checked={globalEnabled} disabled={!globalReady || saving} onChange={enabled => void setEnabled(enabled)} /></div>
         <div className="hero-status"><span className={'connection-indicator ' + connection.status}><span className="dot" />{connected ? t("connection.connected") : connection.status === 'connecting' ? t("connection.pending") : t("connection.disconnected")}</span><span className="status-separator" /><span>{snapshot ? t("runtime.active", { count: snapshot.runtime.active_root_count, limit: settings.max_root_agents }) : t("agents.waiting")}</span><button className="inline-icon" aria-label={t("connection.reconnect")}  title={t("connection.reconnectHint")}  onClick={() => void window.dsh.reconnect()}><Icon name="refresh" size={13} /></button></div>
+        <p className="global-switch-note">{t('outsourcing.refreshHint')}</p>
       </section>
 
       <div className="expanded-content">

@@ -1,6 +1,6 @@
 # DeepSeek Harness as Subagent · dsh MCP
 
-[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.5) · [安装说明 / Installation](docs/install.md)
+[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.6) · [安装说明 / Installation](docs/install.md)
 
 **在线安装器从 GitHub 下载程序及 DeepSeek Harness CLI 核心运行包，并校验文件。手动安装必须同时下载程序 ZIP 与 CLI 核心 ZIP。** CLI 来自官方 dsh 项目，本项目将固定版本的官方 npm 包及其依赖重新分发为 GitHub Release 附件，详见[来源和安装方式](docs/install.md)。本项目为独立社区集成，非 DeepSeek 或 OpenAI 官方产品。
 
@@ -12,9 +12,11 @@
 
 点击最小化可收起为**悬浮球**，实时显示所选聊天的代理并发数（含二次外包）。拖动移动，点击展开；断线时显示离线状态。每个聊天独立任务、队列和预算，共用 API/模型配置；控制窗可切换聊天。v0.1.5 补齐 Codex 实际采用的请求元数据身份路由，修复无启动聊天 ID 时只能列出工具、窗口不自动打开的问题。详见 [多聊天连接](docs/multi-chat.md)。
 
+v0.1.6 增加**所有聊天共享的外包总开关**，打开窗口后即可操作，无需先调用工具。关闭时保留工具定义和历史上下文，连接提示、`get_status` 以及被拒绝的调用会明确返回“外包已禁用”；服务端立即拦截外包，不依赖模型自觉或客户端刷新工具目录。已有聊天在下次状态查询或调用时收到最新状态，切换本身无需重启。聊天选择器优先显示 Codex 本地保存的名称，并跟随重命名更新；任务和预算继续独立。
+
 ```text
 Codex / MCP 客户端
-  └─ dsh stdio 连接适配器（17 个工具，同一聊天复用一个后台服务）
+  └─ dsh stdio 连接适配器（18 个工具，同一聊天复用一个后台服务）
        └─ 代理管理器：任务、消息队列、并发限制、状态和结果
             └─ 官方 Harness SDK → 官方 dsh CLI 子进程
                  └─ DeepSeek 官方 API + Harness 工作区工具
@@ -24,6 +26,7 @@ Codex / MCP 客户端
 
 | 工具 | 行为 |
 | --- | --- |
+| `get_status` | 查询所有聊天共用的实时开关；禁用时仍可用。外包前先查询，关闭时返回“外包已禁用”，不创建代理或消耗模型额度。 |
 | `spawn_agent` | 立即返回代理 ID 和 `/root/task_name` 路径，后台启动任务。支持 `message`、`cwd`、`model`、`reasoning_effort`、`context`、`parent`、`fork_turns`、`max_depth` 和 `max_children`。 |
 | `list_model` | 返回当前已启用的可选模型 ID。 |
 | `list_effort` | 输入 `model_id`，返回该模型按用户声明顺序保存的推理强度列表。 |
@@ -53,7 +56,7 @@ Codex / MCP 客户端
 
 ## 安装、运行与接入 Codex
 
-普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.5)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
+普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.6)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
 
 计费公式已独立为 `billing/rules.py`，价格表为 `billing/prices.json` 与 `billing/openai-prices.json`。价格表保存后自动重载；可用 `pnpm prices:edit deepseek` / `pnpm prices:edit openai` 打开编辑器，`pnpm prices:check` 校验。可以在配置的 `billing.rules` 中指定自己的 Python 文件；预算、账本和异常处理仍由服务端执行。详见 [Python 自定义计费](docs/billing.md)。
 
@@ -124,7 +127,7 @@ node --env-file-if-exists=.env packaging/launch-server.mjs --config dsh.config.j
 
 当用户同时设置 `allow_secondary:true`、`max_depth_user >= 2`、`max_children_user >= 3` 时，这允许 `lead` 创建最多 3 个直属子代理，各自最多再创建 3 个代理；最深一层不能继续外包。更小的用户上限会收紧模型请求的值。子代理省略参数时继承父代理的 `max_children` 和减 1 后的 `max_depth`，显式参数只能收紧继承限制，不能放大。额度保存到本地状态，继续任务、关闭代理和重启服务均不会重置。`list_agents`、`read_agent` 和 `spawn_agent` 返回保存的额度、当前有效额度与 `children_count`。
 
-具有额度的工作进程通过 Harness 官方 MCP 客户端获得 14 个 `mcp__dsh__*` 工具，包括模型与强度查询；全局 `set_concurrency`、`list_deliveries`、`retry_delivery` 仅提供给主调用方。服务端绑定调用者身份，省略 `parent` 即创建自己的直属子代理；它只能查看自身及后代、控制后代，不能指定其他代理或顶层身份来跳过限制。下一层默认 `fork_turns: "none"`，可显式改为 `"all"` 继承其 dsh 父代理上下文。子代理默认不单独向 Codex 聊天回传，父代理通过 `wait_agent` / `read_agent` 收集结果。
+具有额度的工作进程通过 Harness 官方 MCP 客户端获得 15 个 `mcp__dsh__*` 工具，包括状态、模型与强度查询；全局 `set_concurrency`、`list_deliveries`、`retry_delivery` 仅提供给主调用方。服务端绑定调用者身份，省略 `parent` 即创建自己的直属子代理；它只能查看自身及后代、控制后代，不能指定其他代理或顶层身份来跳过限制。下一层默认 `fork_turns: "none"`，可显式改为 `"all"` 继承其 dsh 父代理上下文。子代理默认不单独向 Codex 聊天回传，父代理通过 `wait_agent` / `read_agent` 收集结果。
 
 同一聊天的所有层仍共享 `max_concurrent_agents` 和 `max_agents`；等待子代理的父进程也占并发槽，额度不足时明确报错。不同聊天分别计数，当前没有跨聊天的全局并发上限。初版中断或关闭一个代理仅影响该代理，已有后代继续由管理器跟踪，可单独中断或关闭。
 

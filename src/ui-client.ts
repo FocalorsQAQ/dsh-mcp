@@ -81,6 +81,10 @@ export class UiClient {
     const result = await this.request<UiEnvelope>('/v1/settings', 'PATCH', { patch, expected_revision: expectedRevision });
     this.accept(result.value, result.endpoint); return this.snapshot();
   }
+  async setOutsourcingEnabled(enabled: boolean, expectedRevision: number) {
+    const result = await this.request<UiEnvelope>('/v1/outsourcing', 'PATCH', { enabled, expected_revision: expectedRevision });
+    this.accept(result.value, result.endpoint); return this.snapshot();
+  }
   async openManagementWindow(window: 'api_keys' | 'models') {
     const result = await this.request<UiWindowIntent>('/v1/window-intent', 'POST', { window }); return result.value;
   }

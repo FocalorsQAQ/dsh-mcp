@@ -13,6 +13,7 @@ const configSchema = z.object({
   ui_auto_start: z.boolean().default(process.platform === 'win32'),
   session_idle_timeout_ms: z.number().int().min(1000).max(1800000).default(60000),
   model_config_dir: z.string().optional(),
+  control_config_dir: z.string().optional(),
   model: z.string().min(1).default('deepseek-v4-flash'),
   provider: z.string().min(1).default('deepseek-official'),
   reasoning_effort: z.string().min(1).optional(),
@@ -51,6 +52,7 @@ export function loadConfig(configPath?: string, overrides: { workspace?: string;
   if (!statSync(config.workspace_root).isDirectory()) throw new DshError('CONFIG', 'workspace_root must be a directory.');
   config.data_dir = resolve(base, overrides.dataDir ?? config.data_dir);
   if (config.model_config_dir) config.model_config_dir = resolve(base, config.model_config_dir);
+  if (config.control_config_dir) config.control_config_dir = resolve(base, config.control_config_dir);
   config.billing.rules = resolve(base, config.billing.rules);
   if (config.billing.python.includes('/') || config.billing.python.includes('\\')) config.billing.python = resolve(base, config.billing.python);
   if (config.codex_home) config.codex_home = resolve(base, config.codex_home);

@@ -70,14 +70,14 @@ async function ui(id) {
 const endpoint = id => JSON.parse(readFileSync(join(data, 'chats', id, 'mcp-endpoint.json'), 'utf8'));
 try {
   const [a1, a2, b, catalog] = await Promise.all([connect(A), connect(A), connect(B), connect()]);
-  for (const client of [a1, a2, b, catalog]) assert.equal((await client.listTools()).tools.length, 17);
+  for (const client of [a1, a2, b, catalog]) assert.equal((await client.listTools()).tools.length, 18);
   const pidA = endpoint(A).pid;
   assert.notEqual(pidA, endpoint(B).pid);
   const unauthorized = createConnection({ host: '127.0.0.1', port: endpoint(A).port });
   unauthorized.on('error', () => {}); await once(unauthorized, 'connect');
   const rejected = new Promise(resolve => unauthorized.once('close', resolve));
   unauthorized.write(JSON.stringify({ token: '0'.repeat(64), session_id: A }) + '\n'); await rejected;
-  assert.equal((await a1.listTools()).tools.length, 17, 'Rejected authentication must leave existing clients usable.');
+  assert.equal((await a1.listTools()).tools.length, 18, 'Rejected authentication must leave existing clients usable.');
   const readOnly = await catalog.callTool({ name: 'spawn_agent', arguments: { task_name: 'forbidden', message: 'must never run' } });
   assert.equal(readOnly.isError, true); assert.match(readOnly.content[0].text, /SESSION_REQUIRED/);
   assert.equal((await catalog.callTool({ name: 'list_agents', arguments: {} })).isError, true);
@@ -101,12 +101,17 @@ try {
   assert.deepEqual(uiB.snapshot().snapshot.metrics.task_cost, [0, 0]);
   const policyA = JSON.parse((await catalog.readResource({ uri: 'dsh://control/status', _meta: { threadId: A } })).contents[0].text);
   assert.equal(policyA.chat_id, A); assert.deepEqual(policyA.budget, [0, 1000]);
-  await uiB.updateSettings({ enabled: false }, uiB.snapshot().snapshot.revision);
+  await uiB.setOutsourcingEnabled(false, uiB.snapshot().snapshot.global_control.state.revision);
   assert.equal((await catalog.callTool({ name: 'spawn_agent', arguments: { task_name: 'disabled', message: 'Must not run' }, _meta: { threadId: B } })).isError, true);
-  assert.equal((await call(catalog, 'list_agents', {}, { threadId: A })).agents.length, 1);
+  assert((await catalog.callTool({ name: 'list_agents', arguments: {}, _meta: { threadId: A } })).isError);
+  for (const client of [a1, a2, b, catalog]) {
+    assert.equal((await client.listTools()).tools.length, 18);
+    assert.equal((await call(client, 'get_status')).enabled, false);
+  }
   const disabled = JSON.parse((await catalog.readResource({ uri: 'dsh://control/status', _meta: { threadId: B } })).contents[0].text);
   assert.equal(disabled.enabled, false);
-  await uiB.updateSettings({ enabled: true }, uiB.snapshot().snapshot.revision);
+  await uiB.setOutsourcingEnabled(true, uiB.snapshot().snapshot.global_control.state.revision);
+  assert.equal((await call(catalog, 'get_status')).enabled, true);
   await a1.close();
   await call(a2, 'followup_task', { target: agentA.id, message: 'HOLD_ACROSS_DISCONNECT Reply once more, without tools.' });
   await until(() => !!releaseHeld);
@@ -136,7 +141,7 @@ try {
       'cross-chat reads denied', 'authentication rejects an invalid token', 'close one connection without stopping others',
       'running task survives last-client disconnect', 'idle host cleanup', 'persisted reconnect', 'other chat survives restart',
       'host metadata routes task calls to independent chats', 'conflicting or invalid identities rejected',
-      'disabled chat stays blocked through shared router', 'policy resource routed to caller'] };
+      'global disable hides every catalog and blocks cached calls', 'policy resource routed to caller'] };
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
 } finally {
   for (const client of uiClients) client.close();

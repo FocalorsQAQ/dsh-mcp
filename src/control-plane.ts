@@ -4,6 +4,7 @@ import { DshError } from './types.ts';
 import { ModelCatalog } from './models.ts';
 import { PythonBilling } from './billing.ts';
 import type { RuntimeModels } from './runtime-models.ts';
+import type { OutsourcingSwitch } from './global-control.ts';
 import { DEEPSEEK_SCHEDULE_ID, pricingSchedule, requestPricePeriod } from './pricing-time.ts';
 import { controlStateSchema, policyPatchSchema, policySchema, tokenUsageSchema,
   type ControlPolicy, type ControlState, type Money, type RequestCharge, type TokenUsage, type AgentPolicyView } from './control-contract.ts';
@@ -27,7 +28,8 @@ export class ControlPlane {
   private changes = new EventEmitter();
   selection?: RuntimeModels;
   constructor(initial: ControlPolicy, saved: ControlState | undefined, private readonly persist: () => void,
-    private readonly now: () => number = () => Date.now(), private readonly billing = new PythonBilling(), readonly models = new ModelCatalog()) {
+    private readonly now: () => number = () => Date.now(), private readonly billing = new PythonBilling(), readonly models = new ModelCatalog(),
+    readonly globalControl?: OutsourcingSwitch) {
     this.changes.setMaxListeners(0);
     const round = randomUUID();
     this.state = saved ? controlStateSchema.parse(saved) : {
@@ -39,7 +41,8 @@ export class ControlPlane {
     for (const request of this.state.requests.filter(item => item.status === 'reserved')) this.finish(request, null, 'unknown');
   }
   exportState(): ControlState { return structuredClone(this.state); }
-  get policy(): ControlPolicy { return structuredClone(this.state.policy); }
+  get policy(): ControlPolicy { return { ...structuredClone(this.state.policy), ...(this.globalControl ? { enabled: this.globalControl.enabled } : {}) }; }
+  globalControlChanged(): void { this.changes.emit('change'); }
   get currentRound(): string { return this.state.current_round_id; }
   subscribe(listener: () => void): () => void {
     const safe = () => { try { listener(); } catch { /* Observer errors cannot refund or bypass reservations. */ } };
@@ -51,7 +54,9 @@ export class ControlPlane {
   }
   updatePolicy(patch: unknown, expectedRevision: number) {
     this.cas(expectedRevision);
-    this.state.policy = policySchema.parse({ ...this.state.policy, ...policyPatchSchema.parse(patch) });
+    const parsed = policyPatchSchema.parse(patch);
+    if (this.globalControl && parsed.enabled !== undefined) throw new DshError('GLOBAL_CONTROL_SCOPE', 'Use setOutsourcingEnabled with the global revision to change the shared switch.');
+    this.state.policy = policySchema.parse({ ...this.state.policy, ...parsed });
     this.commit(); return this.snapshot();
   }
   beginRound(id: string, expectedRevision: number) {
@@ -70,7 +75,8 @@ export class ControlPlane {
     this.commit(); return result;
   }
   assertEnabled(): void {
-    if (!this.state.policy.enabled) throw new DshError('OUTSOURCING_DISABLED', '外包已禁用');
+    if (this.globalControl) this.globalControl.assertEnabled();
+    else if (!this.state.policy.enabled) throw new DshError('OUTSOURCING_DISABLED', '外包已禁用');
   }
   private round(id: string) {
     const round = this.state.rounds.find(item => item.id === id);
@@ -157,7 +163,7 @@ export class ControlPlane {
     this.state.requests = this.state.requests.filter(item => item.status === 'reserved' || retained.includes(item));
   }
   agentInfo(roundId = this.currentRound): AgentPolicyView {
-    const policy = this.state.policy;
+    const policy = this.policy;
     const effective = min(policy.round_budget === null ? null : nano(policy.round_budget), remaining(policy.task_budget, this.state.task_spent_nano));
     const available = this.available(roundId);
     return { enabled: policy.enabled, message: policy.enabled ? '外包可用；预算由服务端强制执行。' : '外包已禁用',
@@ -170,7 +176,7 @@ export class ControlPlane {
   snapshot() {
     const last = this.state.last_request;
     return { contract_version: 1, revision: this.state.revision, task_id: this.state.task_id, round_id: this.currentRound,
-      settings: this.policy, agent: this.agentInfo(),
+      settings: this.policy, agent: this.agentInfo(), global_control: this.globalControl?.status() ?? null,
       metrics: { task_cost: wire(this.state.task_spent_nano), round_cost: wire(this.round(this.currentRound).spent_nano),
         last_api_cost: last ? wire(last.cost_nano) : ZERO(), reserved_cost: wire(this.reserved()),
         last_api_tokens: structuredClone(last?.usage ?? null), tokens: structuredClone(this.state.tokens),

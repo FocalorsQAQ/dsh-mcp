@@ -32,7 +32,7 @@ async function setup(t: TestContext) {
   return { registry, credentials, manager, snapshot, apis, directory, specs };
 }
 
-test('MCP exposes current IDs and ordered efforts, refreshes descriptions, and hides all tools when disabled', async t => {
+test('MCP exposes current IDs and ordered efforts, refreshes descriptions, and blocks calls with a disable notice', async t => {
   const { manager, registry } = await setup(t);
   const server = createServer(manager), client = new Client({ name: 'model-test', version: '1' });
   const [a, b] = InMemoryTransport.createLinkedPair(); await server.connect(a); await client.connect(b);
@@ -46,8 +46,10 @@ test('MCP exposes current IDs and ordered efforts, refreshes descriptions, and h
   await new Promise(resolve => setTimeout(resolve, 1100));
   assert(!(await client.listTools()).tools.find(tool => tool.name === 'spawn_agent')!.description!.includes('gpt-5-mini'));
   assert((await client.callTool({ name: 'list_effort', arguments: { model_id: 'gpt-5-mini' } })).isError);
-  manager.controlPlane.updatePolicy({ enabled: false }, manager.controlPlane.snapshot().revision);
-  assert.equal((await client.listTools()).tools.length, 0);
+  manager.globalControl.setEnabled(false, manager.globalControl.snapshot().revision);
+  assert.equal((await client.listTools()).tools.length, 18);
+  assert.equal((await call('get_status'))!.enabled, false);
+  assert((await client.callTool({ name: 'list_model', arguments: {} })).isError);
 });
 
 test('dispatch rejects undeclared efforts, binds source, and rechecks removal before each request', async t => {

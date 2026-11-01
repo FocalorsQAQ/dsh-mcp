@@ -37,7 +37,8 @@ export function sessionConfig(base: Config, id: string): Config {
     const saved = JSON.parse(readFileSync(legacy, 'utf8'));
     if (saved.control?.policy) control = policySchema.parse(saved.control.policy);
   }
-  return { ...base, data_dir: data, model_config_dir: base.model_config_dir ?? base.data_dir, control,
+  return { ...base, data_dir: data, model_config_dir: base.model_config_dir ?? base.data_dir,
+    control_config_dir: base.control_config_dir ?? base.data_dir, control,
     codex_thread_id: id === 'discovery' ? undefined : id,
     completion_delivery: { ...base.completion_delivery,
       ...(id === 'discovery' ? { mode: 'off' as const, thread_id: undefined } : { thread_id: id }) } };

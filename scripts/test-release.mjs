@@ -29,7 +29,7 @@ const upgradeIndex = process.argv.indexOf('--upgrade-from');
 const upgradeFrom = upgradeIndex < 0 ? undefined : process.argv[upgradeIndex + 1];
 let previousConfig;
 if (upgradeIndex >= 0) {
-  assert.match(upgradeFrom ?? '', /^0\.1\.[0134]$/);
+  assert.match(upgradeFrom ?? '', /^0\.1\.[01345]$/);
   const baselineArgs = args.filter(arg => !arg.startsWith('/LOG='));
   await run(testInstaller(upgradeFrom, directory),
     [...baselineArgs, `/LOG=${join(directory, 'baseline-install.log')}`], { env: installEnvironment });

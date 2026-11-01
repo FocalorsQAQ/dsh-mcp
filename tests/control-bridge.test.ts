@@ -30,7 +30,7 @@ test('worker MCP bridge requires its capability and enforces bound scope through
   await client.connect(new StreamableHTTPClientTransport(new URL(bridge.url), { requestInit: { headers: { Authorization: 'Bearer ' + bridge.token } } }));
   t.after(() => client.close());
   const tools = await client.listTools();
-  assert.equal(tools.tools.length, 14);
+  assert.equal(tools.tools.length, 15);
   assert(tools.tools.some(tool => tool.name === 'batch_control'));
   assert(!tools.tools.some(tool => tool.name === 'set_concurrency'), 'workers cannot change the global limit');
   assert(!tools.tools.some(tool => ['retry_delivery', 'list_deliveries'].includes(tool.name)), 'outbox controls are reserved to the main caller');

@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('dsh', {
     close: () => ipcRenderer.invoke('dsh:models:close'),
   },
   getState: () => ipcRenderer.invoke('dsh:state:get'),
+  setOutsourcingEnabled: (enabled, expected_revision) => ipcRenderer.invoke('dsh:outsourcing:set', { enabled, expected_revision }),
   updateSettings: (patch, revision, session_id) => ipcRenderer.invoke('dsh:settings:update', { patch, expected_revision: revision, session_id }),
   selectSession: id => ipcRenderer.invoke('dsh:sessions:select', id),
   openManagementWindow: window => ipcRenderer.invoke('dsh:window:intent', { window }),

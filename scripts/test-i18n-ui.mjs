@@ -104,12 +104,13 @@ try {
   await control.getByRole('heading', { name: 'Delegation enabled', exact: true }).waitFor();
   assert.equal(await control.getByRole('combobox', { name: 'Interface language' }).inputValue(), 'en-US');
   await bridge.close();
-  await control.getByRole('heading', { name: 'Waiting for service', exact: true }).waitFor();
-  await switchTo(control, 'Interface language', 'zh-CN', '等待服务连接');
+  await control.locator('.connection-indicator.disconnected').waitFor();
+  await control.getByRole('heading', { name: 'Delegation enabled', exact: true }).waitFor();
+  await switchTo(control, 'Interface language', 'zh-CN', '外包已启用');
   await control.screenshot({ path: join(directory, 'control-chinese-offline.png') });
   await desktop.close(); desktop = undefined;
   control = await launch('en-US');
-  await control.getByRole('heading', { name: 'Waiting for service', exact: true }).waitFor();
+  await control.getByRole('heading', { name: 'Delegation enabled', exact: true }).waitFor();
   assert.deepEqual(errors, []);
   const report = { ok: true, languages: ['zh-CN', 'en-US'], verified: ['live switching across three windows', 'unsaved forms preserved',
     'masked key input preserved', 'localized confirmation dialogs (cancelled)', 'existing notices translated', 'preference survives restart',

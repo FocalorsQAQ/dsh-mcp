@@ -2,3 +2,4 @@
 .session-picker label{font-size:11px;color:#aaa;white-space:nowrap}
 .session-picker select{flex:1;min-width:0;background:#2b2b2b;border:1px solid #494949;border-radius:6px;color:#ddd;padding:5px 7px;font:inherit;font-size:11px}
 .session-picker select:focus-visible{outline:1px solid #8db4ee}
+.global-switch-note { margin: 9px 0 0; color: var(--text-secondary, #929292); font-size: 11px; line-height: 1.45; }

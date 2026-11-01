@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, existsSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
@@ -15,7 +15,11 @@ const { sessionConfig, writeSessionInfo } = await import(pathToFileURL(join(runt
 const output = resolve('.test-output/session-ui'); mkdirSync(output, { recursive: true });
 const directory = mkdtempSync(join(output, 'run-')), configPath = join(directory, 'config.json'), data = join(directory, 'data');
 const A = '10000000-0000-4000-8000-000000000001', B = '20000000-0000-4000-8000-000000000002';
-writeFileSync(configPath, JSON.stringify({ workspace_root: directory, data_dir: data, ui_auto_start: false,
+const codexHome = join(directory, 'codex-home'); mkdirSync(codexHome);
+const titleIndex = join(codexHome, 'session_index.jsonl');
+writeFileSync(titleIndex, [{ id: A, thread_name: '实现控制面板', updated_at: '2026-10-31T00:00:00Z' },
+  { id: B, thread_name: '检查并发任务', updated_at: '2026-10-31T00:00:00Z' }].map(row => JSON.stringify(row) + '\n').join(''));
+writeFileSync(configPath, JSON.stringify({ workspace_root: directory, data_dir: data, ui_auto_start: false, codex_home: codexHome,
   completion_delivery: { mode: 'off' }, control: { billing_currency: 'CNY', round_budget: [0, 2] },
   ...(process.env.DSH_RELEASE_ROOT ? { billing: { python: join(runtime, 'bin/python/python.exe'), rules: join(runtime, 'billing/rules.py') } } : {}) }));
 const base = loadConfig(configPath), instances = [];
@@ -32,13 +36,29 @@ async function instance(id) {
 }
 async function until(check) { const deadline = Date.now() + 10000; while (!(await check())) { assert(Date.now() < deadline, 'Condition timed out.'); await new Promise(resolve => setTimeout(resolve, 50)); } }
 try {
-  const a = await instance(A), b = await instance(B);
-  b.app.ui.updateSettings({ round_budget: [0, 3] }, b.app.ui.snapshot().revision);
   const env = { ...process.env, DSH_UI_LOCALE: 'zh-CN' }; delete env.ELECTRON_RUN_AS_NODE;
   desktop = await electron.launch({ executablePath: require('electron'), args: [join(runtime, 'desktop/main.mjs'), '--config', configPath, '--session-id', A], env });
   const page = await desktop.firstWindow(), errors = []; page.on('pageerror', e => errors.push(e.message));
+  // The user can operate the global switch before any chat host, tool call, or ledger exists.
+  await page.getByRole('heading', { name: '外包已启用', exact: true }).waitFor();
+  await page.getByRole('switch', { name: '启用外包', exact: true }).click();
+  await page.getByRole('heading', { name: '外包已关闭', exact: true }).waitFor();
+  const a = await instance(A), b = await instance(B);
+  for (const client of [a.client, b.client]) {
+    assert.equal((await client.listTools()).tools.length, 18);
+    assert.equal((await client.callTool({ name: 'get_status', arguments: {} })).structuredContent.enabled, false);
+  }
+  await page.getByRole('switch', { name: '启用外包', exact: true }).click();
+  await until(async () => (await a.client.callTool({ name: 'get_status', arguments: {} })).structuredContent.enabled &&
+    (await b.client.callTool({ name: 'get_status', arguments: {} })).structuredContent.enabled);
+  b.app.ui.updateSettings({ round_budget: [0, 3] }, b.app.ui.snapshot().revision);
   const selector = page.getByLabel('当前聊天', { exact: true }), budget = page.getByLabel('本轮总预算人民币', { exact: true });
+  await selector.selectOption(A);
   await until(async () => await budget.inputValue() === '2');
+  assert.equal(await selector.locator('option').filter({ hasText: '实现控制面板' }).getAttribute('value'), A);
+  assert.equal(await selector.locator('option').filter({ hasText: '检查并发任务' }).getAttribute('value'), B);
+  appendFileSync(titleIndex, JSON.stringify({ id: A, thread_name: '已重命名的控制面板聊天', updated_at: '2026-11-01T00:00:00Z' }) + '\n');
+  await until(async () => (await selector.textContent()).includes('已重命名的控制面板聊天'));
   await selector.selectOption(B); await until(async () => await budget.inputValue() === '3');
   await budget.fill('7'); await budget.press('Tab');
   await until(() => b.app.ui.snapshot().settings.round_budget[1] === 7);
@@ -83,7 +103,7 @@ try {
   await page.getByLabel('Current chat', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   const report = { ok: true, directory, runtime, paid_api_calls: 0,
-    checks: ['chat selector', 'independent budget editing', 'reject stale chat edits', 'orb follows selected chat', 'shared encrypted API and model configuration', 'bilingual selector'] };
+    checks: ['global switch before any chat host/tool call', 'global switch supplies live status to both chats', 'chat names from local Codex index and live rename', 'chat selector', 'independent budget editing', 'reject stale chat edits', 'orb follows selected chat', 'shared encrypted API and model configuration', 'bilingual selector'] };
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
 } finally {
   await desktop?.close();

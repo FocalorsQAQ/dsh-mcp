@@ -122,7 +122,7 @@ test('model discovery uses metadata without inventing prices or exposing credent
   assert.equal(catalog.get(model)?.source, 'bundled');
 });
 
-test('actual MCP tool discovery hides and rejects all tools while disabled and exposes a notice resource', async t => {
+test('MCP preserves tools while disabled, exposes a live notice and rejects outsourcing', async t => {
   const app = createApplication(configFor(t), () => ({ async open() {}, async close() {},
     async run() { return { finalResponse: 'x', finishReason: 'completed' }; } }));
   const server = app.createMcpServer();
@@ -130,17 +130,19 @@ test('actual MCP tool discovery hides and rejects all tools while disabled and e
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(a); await client.connect(b);
   t.after(async () => { await client.close(); await server.close(); await app.close(); });
-  assert.equal((await client.listTools()).tools.length, 17);
+  assert.equal((await client.listTools()).tools.length, 18);
   assert((await client.listTools()).tools.every(tool => !/update_settings|begin_round/.test(tool.name)));
   let events = 0;
   const unsubscribe = app.ui.subscribe(() => { events++; });
-  app.ui.updateSettings({ enabled: false }, app.ui.snapshot().revision);
-  assert.equal((await client.listTools()).tools.length, 0);
+  app.ui.setOutsourcingEnabled(false, 0);
+  assert.equal((await client.listTools()).tools.length, 18);
+  assert.equal((await client.callTool({ name: 'get_status', arguments: {} })).structuredContent?.enabled, false);
   assert((await client.callTool({ name: 'spawn_agent', arguments: { task_name: 'bad', message: 'x' } })).isError);
   const resource = await client.readResource({ uri: 'dsh://control/status' });
   assert(JSON.stringify(resource).includes('外包已禁用'));
-  app.ui.updateSettings({ enabled: true }, app.ui.snapshot().revision);
-  assert.equal((await client.listTools()).tools.length, 17);
+  app.ui.setOutsourcingEnabled(true, 1);
+  assert.equal((await client.listTools()).tools.length, 18);
+  assert.equal((await client.callTool({ name: 'get_status', arguments: {} })).structuredContent?.enabled, true);
   assert.equal(app.ui.openManagementWindow('api_keys').implemented, true);
   assert.equal(app.ui.openManagementWindow('models').window, 'models');
   assert.equal(events, 2); unsubscribe();
@@ -206,7 +208,7 @@ test('backend capabilities charge nested calls to original user round across a n
   const spent = manager.controlPlane.exportState().rounds.find(round => round.id === original)!.spent_nano[0];
   assert(spent > 0);
   assert.equal(spent, manager.controlPlane.exportState().task_spent_nano[0]);
-  update(manager.controlPlane, { enabled: false });
+  manager.globalControl.setEnabled(false, manager.globalControl.snapshot().revision);
   assert.throws(() => specs.get(child.id)!.metering!.reserve(model, 100), /外包已禁用/);
   const saved = JSON.parse(readFileSync(join(config.data_dir, 'state.json'), 'utf8'));
   assert.equal(saved.control.task_spent_nano[0], spent);

@@ -13,6 +13,8 @@ import { createModelWindow } from './model-window.mjs';
 import { CredentialRegistry } from '../dist/credentials.js';
 import { languages, startupLocale, translate } from './localization.mjs';
 import { listSessions, sessionDirectory } from '../dist/sessions.js';
+import { OutsourcingSwitch, outsourcingCommandSchema } from '../dist/global-control.js';
+import { readChatNames } from '../dist/chat-names.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({ args: process.argv.slice(2), options: {
@@ -20,6 +22,7 @@ const { values } = parseArgs({ args: process.argv.slice(2), options: {
 }, strict: false, allowPositionals: true });
 const autoStart = values['auto-start'] === true;
 const config = loadConfig(values.config ?? (autoStart ? undefined : join(root, 'dsh.config.json')), { workspace: values.workspace, dataDir: values['data-dir'] });
+const globalControl = new OutsourcingSwitch(config.control_config_dir ?? config.data_dir, config.billing.python, config.control.enabled);
 const uiHome = join(config.data_dir, 'desktop');
 mkdirSync(uiHome, { recursive: true });
 app.setPath('userData', uiHome);
@@ -57,7 +60,8 @@ function readSessions() {
   if (existsSync(join(config.data_dir, 'state.json')) || existsSync(join(config.data_dir, 'ui-endpoint.json'))) {
     entries.push({ id: 'legacy', workspace: config.workspace_root, created_at: '' });
   }
-  return entries;
+  const names = readChatNames(entries.map(item => item.id), config.codex_home);
+  return entries.map(item => ({ ...item, title: names.get(item.id) ?? null }));
 }
 let sessions = readSessions();
 const preferredSession = values['session-id'] ?? preferences.session_id;
@@ -67,9 +71,10 @@ function sessionClient(id) {
     sessions.find(item => item.id === id)?.workspace ?? config.workspace_root);
 }
 let client = sessionClient(sessionId);
-const state = () => ({ connection: client.snapshot(), session_id: sessionId, sessions, window: { compact, floating } });
+const state = () => ({ connection: client.snapshot(), global_control: globalControl.status(), session_id: sessionId, sessions, window: { compact, floating } });
 const publish = () => { for (const target of [window, orbWindow]) if (target && !target.isDestroyed() && !target.webContents.isLoadingMainFrame()) target.webContents.send('dsh:state', state()); };
 let unsubscribeClient = client.subscribe(publish);
+const unsubscribeGlobal = globalControl.subscribe(publish);
 function selectSession(id) {
   if (!sessions.some(item => item.id === id)) throw { code: 'UI_SESSION' };
   if (id !== sessionId) {
@@ -134,6 +139,10 @@ languageHandler('dsh:language:set', value => {
 });
 
 handler('dsh:state:get', () => state());
+handler('dsh:outsourcing:set', input => {
+  const command = outsourcingCommandSchema.parse(input);
+  globalControl.setEnabled(command.enabled, command.expected_revision); publish(); return state();
+});
 handler('dsh:sessions:select', id => selectSession(id));
 handler('dsh:settings:update', async (input) => {
   const { session_id, ...settings } = input;
@@ -272,4 +281,4 @@ else {
   }).catch(error => { process.stderr.write('[dsh UI] ' + error.message + '\n'); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { clearInterval(catalogTimer); unsubscribeClient(); client.close(); });
+app.on('before-quit', () => { clearInterval(catalogTimer); unsubscribeClient(); unsubscribeGlobal(); client.close(); });

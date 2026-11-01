@@ -189,7 +189,7 @@ try {
   await connect();
   console.log('Connected to the production dsh MCP server.');
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map(tool => tool.name).sort(), ['batch_control', 'close_agent', 'followup_task', 'interrupt_agent', 'list_agents', 'list_deliveries', 'list_model', 'list_effort', 'manage_queue', 'pause_agent', 'read_agent', 'resume_agent', 'retry_delivery', 'send_message', 'set_concurrency', 'spawn_agent', 'wait_agent'].sort());
+  assert.deepEqual(tools.map(tool => tool.name).sort(), ['get_status', 'batch_control', 'close_agent', 'followup_task', 'interrupt_agent', 'list_agents', 'list_deliveries', 'list_model', 'list_effort', 'manage_queue', 'pause_agent', 'read_agent', 'resume_agent', 'retry_delivery', 'send_message', 'set_concurrency', 'spawn_agent', 'wait_agent'].sort());
   for (const args of [{ max_concurrent_agents: 0 }, { max_concurrent_agents: 1.5 }]) {
     assert((await client.callTool({ name: 'set_concurrency', arguments: args })).isError);
   }

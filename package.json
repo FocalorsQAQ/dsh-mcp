@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "license": "MIT",
   "author": "FocalorsQAQ",
@@ -26,6 +26,10 @@
     "./ui-protocol": {
       "types": "./dist/ui-protocol.d.ts",
       "import": "./dist/ui-protocol.js"
+    },
+    "./global-control": {
+      "types": "./dist/global-control.d.ts",
+      "import": "./dist/global-control.js"
     },
     "./credentials": {
       "types": "./dist/credentials.d.ts",

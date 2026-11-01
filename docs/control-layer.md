@@ -16,10 +16,12 @@
 | 方法 | 返回 / 行为 |
 | --- | --- |
 | `snapshot()` | 完整 v1 快照；包含 `revision`、设置、agent 信息、指标、模型目录、运行状态。快照可安全修改，不会修改服务端状态。 |
-| `updateSettings(patch, expectedRevision)` | 严格校验的局部更新；旧版本返回 `CONTROL_CONFLICT`，先刷新再提交。未提供的字段不会重置。 |
+| `getGlobalControl()` | 所有聊天共享开关的 `{available,state}`；有效 `state` 包含独立的 `revision` 和 `enabled`。读取失败时关闭外包。 |
+| `setOutsourcingEnabled(enabled, expectedRevision)` | 设置共享总开关；版本不符返回 `GLOBAL_CONTROL_CONFLICT`。不改变任何聊天的预算、任务或轮次。 |
+| `updateSettings(patch, expectedRevision)` | 当前聊天设置的局部更新；旧版本返回 `CONTROL_CONFLICT`。v0.1.6 起 `enabled` 必须使用独立的总开关 API，避免混淆两种版本号。 |
 | `beginRound(hostRoundId, expectedRevision)` | 用户向主代理发起新一轮任务时，由可信宿主调用。相同 ID 重用原账本，绝不清零。 |
 | `subscribe(listener)` | 状态改变时收到完整快照；返回取消订阅函数。订阅异常不能破坏调度或计费。首次状态通过 `snapshot()` 读取。 |
-| `openManagementWindow('api_keys' \| 'models')` | 返回 `{contract_version:1,type:'open_window',window,implemented:false}`；以后由 UI 显示窗口。现在不读取或修改密钥，也不实际打开窗口。 |
+| `openManagementWindow('api_keys' \| 'models')` | 返回 `{contract_version:1,type:'open_window',window,implemented:true}`；由 UI 适配器打开对应管理窗口。 |
 | `refreshModels()` | 宿主使用本机 `DEEPSEEK_API_KEY` 调用官方 `/models`；更新名称、容量、输出上限、输入类型与推理等级。密钥不会出现在快照中。 |
 
 ```ts
@@ -31,8 +33,10 @@ const mcp = app.createMcpServer();
 // await mcp.connect(yourMcpTransport);
 
 let view = app.ui.snapshot();
+const global = app.ui.getGlobalControl();
+if (global.available) app.ui.setOutsourcingEnabled(true, global.state.revision);
 view = app.ui.updateSettings({
-  enabled: true, max_root_agents: 2,
+  max_root_agents: 2,
   allow_secondary: true, max_depth_user: 2, max_children_user: 1,
   round_budget: [1, 0], task_budget: [5, 0], billing_currency: 'USD',
 }, view.revision);
@@ -48,9 +52,13 @@ await mcp.close();
 
 ## 控件映射
 
+不依赖聊天连接的自定义 UI 可导入 `dsh-mcp/global-control` 的 `OutsourcingSwitch`，用共享根目录和 Python 路径创建实例，再使用 `status()`、`setEnabled(enabled, revision)`、`subscribe(listener)`。它只维护总开关，不创建聊天账本。原有 `UiClient` 也提供 `setOutsourcingEnabled`，对应认证端点 `PATCH /v1/outsourcing`；`GET /v1/outsourcing` 读取全局状态。
+
+开关写入由跨进程操作系统锁和原子文件替换保护；读取失败时拒绝外包。每次工具调用和付费请求同步检查，文件变化通知在约 250 毫秒内广播。首次创建从旧根目录 `state.json` 迁移全局 `enabled`，否则采用配置默认值；旧聊天中的同名字段不再控制启用状态。账本及其他策略不会迁移或合并。工具定义保持稳定，`get_status` 始终可读；禁用时其他调用返回明确提示，不依赖 Codex 刷新缓存。见 [多聊天连接](multi-chat.md)。
+
 | 编号 | v1 字段 / 入口 | 语义与默认值 |
 | --- | --- | --- |
-| 1 | `settings.enabled` | 默认 true；关闭时所有 dsh 工具从发现列表隐藏，并拒绝旧工具调用与新的 API 请求。保留只读状态资源说明“外包已禁用”。 |
+| 1 | `global_control.state.enabled` / `setOutsourcingEnabled` | 所有聊天共用。`settings.enabled` 仅为兼容读取的当前值。关闭后保留工具定义，`get_status` 与状态资源返回“外包已禁用”，其他工具和新 API 请求在代码中被拒绝。已有聊天在下一次查询或调用时收到最新提示。 |
 | 2 | `settings.max_root_agents` | 同时运行的顶层代理数，默认 4，可为 0。包含启动、暂停收尾与退出未确认的进程。独立于模型可调的全局并发数。 |
 | 3 | `settings.allow_secondary` | 默认 false；用户允许且父代理的模型深度授权大于 0 才能再外包。 |
 | 4 | `settings.max_depth_user` | 默认 1；从顶层外包代理向下计算可再外包的层数，与模型 `max_depth` 取更严格值，后代沿边减一。 |

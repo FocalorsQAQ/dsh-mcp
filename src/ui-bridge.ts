@@ -7,6 +7,7 @@ import { ZodError } from 'zod';
 import type { DshControlApi } from './application.ts';
 import { settingsCommandSchema, windowIntentSchema, type UiEnvelope } from './ui-protocol.ts';
 import { DshError, errorText } from './types.ts';
+import { outsourcingCommandSchema } from './global-control.ts';
 
 /** Private UI transport around the application API. Never registered as agent tools. */
 export async function startUiBridge(ui: DshControlApi, dataDir: string) {
@@ -54,6 +55,12 @@ export async function startUiBridge(ui: DshControlApi, dataDir: string) {
           json(res, 403, { error: { code: 'FORBIDDEN', message: 'UI authorization required.' } }); return;
         }
         if (req.method === 'GET' && req.url === '/v1/snapshot') { json(res, 200, envelope()); return; }
+        if (req.method === 'GET' && req.url === '/v1/outsourcing') { json(res, 200, ui.getGlobalControl()); return; }
+        if (req.method === 'PATCH' && req.url === '/v1/outsourcing') {
+          const command = outsourcingCommandSchema.parse(await body(req));
+          ui.setOutsourcingEnabled(command.enabled, command.expected_revision);
+          json(res, 200, envelope()); return;
+        }
         if (req.method === 'GET' && req.url === '/v1/events') {
           if (streams.size >= 8) { json(res, 429, { error: { code: 'CAPACITY', message: 'Too many control windows.' } }); return; }
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
@@ -73,7 +80,7 @@ export async function startUiBridge(ui: DshControlApi, dataDir: string) {
       } catch (error) {
         if (res.headersSent) { res.destroy(); return; }
         const code = error instanceof DshError ? error.code : error instanceof ZodError || error instanceof SyntaxError ? 'INPUT' : 'INTERNAL';
-        json(res, code === 'CONTROL_CONFLICT' ? 409 : code === 'INPUT' ? 400 : 500,
+        json(res, ['CONTROL_CONFLICT', 'GLOBAL_CONTROL_CONFLICT'].includes(code) ? 409 : code === 'INPUT' ? 400 : 500,
           { error: { code, message: code === 'INPUT' ? 'Invalid control input.' : errorText(error) } });
       }
     })();

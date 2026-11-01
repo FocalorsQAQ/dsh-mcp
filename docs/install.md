@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.5](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.5)
+[下载 v0.1.6](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.6)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.5-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.6-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -40,7 +40,9 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 ### 从旧版本升级
 
-v0.1.5 补齐 Codex 实际启动方式：宿主在每次请求元数据中提供聊天 ID，启动环境中可能没有 `CODEX_THREAD_ID`。v0.1.4 会把这种连接留在发现模式，导致工具虽能列出却不能执行任务、悬浮窗也不自动打开。新版按请求路由，并允许共享连接初始化时打开窗口。无需给所有聊天写死同一个 ID。尚未收到聊天调用时，控制窗可能显示等待连接。
+v0.1.6 增加所有聊天共享的总开关，打开控制窗后即可操作，无需先调用工具。关闭后保留工具和历史，`get_status` 与被拒绝的调用返回“外包已禁用”。状态查询和调用拦截不依赖工具列表刷新，切换开关无需重启；升级后仍须重启 Codex 加载新版服务。聊天选择器现在优先显示本地聊天名称。
+
+保留 v0.1.5 的请求身份路由：宿主在每次请求元数据中提供聊天 ID，启动环境中可能没有 `CODEX_THREAD_ID`。无需给所有聊天写死同一个 ID。尚未收到聊天调用时，总开关仍可操作，所选聊天的任务与用量等待连接。
 
 保留 v0.1.4 对数据目录争抢的修复。升级后重启 Codex，使连接使用新版入口。新聊天的数据在 `data/chats/<聊天 UUID>/` 下；旧根目录会话和账本保留，UI 标为“升级前的会话”，不会自动归入某个聊天。API/模型配置继续共用；新聊天继承旧用户策略作为初始值。详见 [多聊天连接](multi-chat.md)。
 
@@ -56,8 +58,8 @@ v0.1.3 修复了覆盖安装 v0.1.2 时可能出现的 `CLI core initialization 
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.5-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.5-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.6-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.6-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -127,6 +129,12 @@ Use the desktop chat selector to choose the control and spending view. Restart
 Codex after upgrading. Old root state is retained separately and is not silently
 assigned to a chat. This is a globally registered MCP server, not a marketplace
 plugin. See [multiple chats](multi-chat.md).
+
+Version 0.1.6 adds a shared delegation switch that works before any chat tool
+call, plus chat names from Codex's local title index. Tool definitions and history
+remain. get_status and blocked calls supply the latest disabled notice, so toggling
+does not require a restart or a tool-list refresh. Restart Codex after upgrading
+to load the new server version.
 
 Version 0.1.3 fixes upgrades from earlier releases, including installations left
 in a mixed state after the v0.1.2 initialization error. Run the newer installer

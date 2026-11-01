@@ -9,6 +9,7 @@ import { scopedTools } from './control.ts';
 import { ControlPlane } from './control-plane.ts';
 import { PythonBilling } from './billing.ts';
 import { RuntimeModels } from './runtime-models.ts';
+import { OutsourcingSwitch } from './global-control.ts';
 import {
   DshError, errorText, type AgentBackend, type AgentEvent, type AgentRecord,
   type AgentStatus, type BackendFactory, type QueuedMessage, type DeliveryRecord, type DeliveryTransport, type ManagerEvent,
@@ -70,11 +71,14 @@ export class AgentManager {
   private deliveries: DeliveryRecord[] = [];
   private deliveryLoop?: Promise<void>;
   private concurrencyOverride?: number;
+  readonly globalControl: OutsourcingSwitch;
+  private unsubscribeGlobal?: () => void;
 
   constructor(readonly config: Config, private readonly backendFactory: BackendFactory,
     private readonly deliver: DeliveryTransport = createDeliveryTransport(config)) {
     this.changed.setMaxListeners(0);
     this.runtimeModels = new RuntimeModels(config);
+    this.globalControl = new OutsourcingSwitch(config.control_config_dir ?? config.data_dir, config.billing.python, config.control.enabled);
     this.store = new StateStore(config.data_dir, config.billing.python);
     try {
       const state = this.store.read();
@@ -82,7 +86,7 @@ export class AgentManager {
       this.events = state.events;
       this.deliveries = state.deliveries;
       this.concurrencyOverride = state.runtime_settings?.max_concurrent_agents;
-      this.controlPlane = new ControlPlane(config.control, state.control, () => this.save(), undefined, new PythonBilling(config.billing));
+      this.controlPlane = new ControlPlane(config.control, state.control, () => this.save(), undefined, new PythonBilling(config.billing), undefined, this.globalControl);
       this.controlPlane.selection = this.runtimeModels;
       this.controlPlane.subscribe(() => {
         if (!this.controlPlane.policy.enabled) {
@@ -93,6 +97,7 @@ export class AgentManager {
         }
         this.changed.emit('change');
       });
+      this.unsubscribeGlobal = this.globalControl.subscribe(() => this.controlPlane.globalControlChanged());
       for (const delivery of this.deliveries) {
         if (!delivery.attempts && delivery.status !== 'pending') {
           delivery.attempts = 1;
@@ -126,6 +131,7 @@ export class AgentManager {
       this.save();
       this.startDeliveries();
     } catch (error) {
+      this.unsubscribeGlobal?.();
       this.store.close();
       throw error;
     }
@@ -887,6 +893,7 @@ export class AgentManager {
 
   private async stopAll(): Promise<void> {
     this.closing = true;
+    this.unsubscribeGlobal?.();
     this.changed.emit('change');
     const workers = [...this.workers.values()];
     for (const worker of workers) worker.stop ??= 'shutdown';

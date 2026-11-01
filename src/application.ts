@@ -11,6 +11,8 @@ export function createApplication(config: Config, backend: BackendFactory = crea
   const snapshot = () => ({ ...controls.snapshot(), runtime: manager.list() });
   const ui = {
     snapshot,
+    getGlobalControl: () => manager.globalControl.status(),
+    setOutsourcingEnabled: (enabled: boolean, expectedRevision: number) => manager.globalControl.setEnabled(enabled, expectedRevision),
     updateSettings: (patch: unknown, expectedRevision: number) => { controls.updatePolicy(patch, expectedRevision); return snapshot(); },
     beginRound: (hostRoundId: string, expectedRevision: number) => { controls.beginRound(hostRoundId, expectedRevision); return snapshot(); },
     openManagementWindow: (window: 'api_keys' | 'models') => controls.windowIntent(window),
@@ -37,6 +39,7 @@ export type DshControlApi = DshApplication['ui'];
 export type DshControlSnapshot = ReturnType<DshControlApi['snapshot']>;
 export { loadConfig } from './config.ts';
 export { listSessions, sessionDirectory } from './sessions.ts';
+export { OutsourcingSwitch } from './global-control.ts';
 export type { Config } from './config.ts';
 export { policySchema, policyPatchSchema, moneySchema } from './control-contract.ts';
 export type { ControlPolicy, Money, AgentPolicyView, TokenUsage } from './control-contract.ts';

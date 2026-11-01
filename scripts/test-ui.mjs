@@ -29,7 +29,7 @@ let desktop;
 const errors = [];
 async function until(condition) {
   const end = Date.now() + 10000;
-  while (!condition()) { assert(Date.now() < end, 'condition timed out'); await new Promise(resolve => setTimeout(resolve, 25)); }
+  while (!(await condition())) { assert(Date.now() < end, 'condition timed out'); await new Promise(resolve => setTimeout(resolve, 25)); }
 }
 try {
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
@@ -42,10 +42,11 @@ try {
   assert.equal(await page.evaluate(() => typeof window.process), 'undefined');
   await page.getByRole('switch', { name: '启用外包' }).click();
   await page.getByRole('heading', { name: '外包已关闭' }).waitFor();
-  assert.equal((await mcp.listTools()).tools.length, 0);
+  assert.equal((await mcp.listTools()).tools.length, 18);
+  assert.equal((await mcp.callTool({ name: 'get_status', arguments: {} })).structuredContent.enabled, false);
   await page.getByRole('switch', { name: '启用外包' }).click();
   await until(() => app.ui.snapshot().settings.enabled);
-  assert.equal((await mcp.listTools()).tools.length, 17);
+  assert.equal((await mcp.callTool({ name: 'get_status', arguments: {} })).structuredContent.enabled, true);
 
   const number = async (label, value, check) => {
     const input = page.getByRole('textbox', { name: label, exact: true });
@@ -113,8 +114,12 @@ try {
   await page.screenshot({ path: join(directory, 'compact-window.png') });
   await page.getByRole('button', { name: '展开窗口', exact: true }).click();
   await bridge.close();
-  await page.getByRole('heading', { name: '等待服务连接' }).waitFor();
-  assert(await page.getByRole('switch', { name: '启用外包' }).isDisabled());
+  await page.locator('.connection-indicator.disconnected').waitFor();
+  await page.getByRole('heading', { name: '外包已启用' }).waitFor();
+  assert(await page.getByRole('switch', { name: '启用外包' }).isEnabled());
+  await page.getByRole('switch', { name: '启用外包' }).click();
+  await page.getByRole('heading', { name: '外包已关闭' }).waitFor();
+  assert.equal((await mcp.callTool({ name: 'get_status', arguments: {} })).structuredContent.enabled, false);
   await page.screenshot({ path: join(directory, 'disconnected-window.png') });
   assert.deepEqual(errors, [], 'renderer must not report runtime or CSP errors');
   const report = { ok: true, settings: app.ui.snapshot().settings, metrics: app.ui.snapshot().metrics,
