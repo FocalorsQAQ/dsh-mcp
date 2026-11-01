@@ -36,7 +36,8 @@ async function until(predicate) {
   }
   throw new Error('Timed out waiting for the control window: ' + JSON.stringify(state));
 }
-const env = { ...process.env, CODEX_THREAD_ID: '30000000-0000-4000-8000-000000000003', ELECTRON_RUN_AS_NODE: '1', DSH_UI_LOCALE: 'en-US' };
+const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_UI_LOCALE: 'en-US' };
+delete env.CODEX_THREAD_ID; // Actual Codex startup has no chat environment variable.
 delete env.DEEPSEEK_API_KEY;
 const transport = new StdioClientTransport({ command: node,
   args: [join(runtime, 'packaging/launch-server.mjs'), '--config', configPath, '--data-dir', data], env, stderr: 'pipe' });
@@ -63,7 +64,7 @@ try {
   const pid = first[0].pid;
   assert.equal(first[0].focused, false, 'Automatic launch must not take keyboard focus.');
   assert(existsSync(join(data, 'desktop')), 'UI must use the effective MCP data directory.');
-  assert(existsSync(join(data, 'chats', env.CODEX_THREAD_ID, 'state.json')), 'Automatic UI launch must use the isolated chat host.');
+  assert(existsSync(join(data, 'chats', 'discovery', 'state.json')), 'Shared MCP startup must open the UI before the first chat-bound call.');
   assert(!existsSync(join(config.data_dir, 'desktop')), 'Config overrides must reach Electron.');
   await inspect('minimize');
   await until(state => state[0]?.minimized);

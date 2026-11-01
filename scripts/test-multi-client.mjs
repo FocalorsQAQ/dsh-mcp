@@ -50,8 +50,8 @@ async function connect(id) {
   await client.connect(transport, { timeout: 20000 });
   return client;
 }
-async function call(client, name, args = {}) {
-  const result = await client.callTool({ name, arguments: args });
+async function call(client, name, args = {}, meta) {
+  const result = await client.callTool({ name, arguments: args, ...(meta ? { _meta: meta } : {}) });
   const value = result.structuredContent ?? JSON.parse(result.content[0].text);
   assert(!result.isError, JSON.stringify(value)); return value;
 }
@@ -80,19 +80,34 @@ try {
   assert.equal((await a1.listTools()).tools.length, 17, 'Rejected authentication must leave existing clients usable.');
   const readOnly = await catalog.callTool({ name: 'spawn_agent', arguments: { task_name: 'forbidden', message: 'must never run' } });
   assert.equal(readOnly.isError, true); assert.match(readOnly.content[0].text, /SESSION_REQUIRED/);
+  assert.equal((await catalog.callTool({ name: 'list_agents', arguments: {} })).isError, true);
+  assert.equal((await catalog.callTool({ name: 'list_agents', arguments: {}, _meta: { threadId: A, thread_id: B } })).isError, true);
+  assert.equal((await catalog.callTool({ name: 'list_agents', arguments: {}, _meta: { threadId: '../outside' } })).isError, true);
+  assert.equal((await a1.callTool({ name: 'list_agents', arguments: {}, _meta: { threadId: B } })).isError, true);
+  assert.equal((await call(catalog, 'list_agents', {}, { threadId: A })).control.chat_id, A);
+  assert.equal((await call(catalog, 'list_agents', {}, { thread_id: B })).control.chat_id, B);
+  assert.equal((await call(catalog, 'list_agents', {}, { 'x-codex-turn-metadata': JSON.stringify({ threadId: A }) })).control.chat_id, A);
   assert.equal(requests, 0);
   const [uiA, uiB] = await Promise.all([ui(A), ui(B)]);
   await uiA.updateSettings({ round_budget: [0, 1000], task_budget: [0, 2000], billing_currency: 'CNY' }, uiA.snapshot().snapshot.revision);
   await uiB.updateSettings({ round_budget: [0, 3000], task_budget: [0, 4000], billing_currency: 'CNY' }, uiB.snapshot().snapshot.revision);
   assert.notEqual(uiA.snapshot().snapshot.task_id, uiB.snapshot().snapshot.task_id);
-  const agentA = (await call(a1, 'spawn_agent', { task_name: 'same_name', message: 'Reply with a short answer. Do not use tools.' })).agent;
+  const agentA = (await call(catalog, 'spawn_agent', { task_name: 'same_name', message: 'Reply with a short answer. Do not use tools.' }, { threadId: A })).agent;
   await until(() => completed(a2, agentA.id));
   assert.equal((await call(a2, 'list_agents')).agents.length, 1);
   assert.equal((await call(b, 'list_agents')).agents.length, 0);
   assert.equal((await b.callTool({ name: 'read_agent', arguments: { target: agentA.id } })).isError, true);
   await until(() => uiA.snapshot().snapshot.metrics.task_cost[1] > 0);
   assert.deepEqual(uiB.snapshot().snapshot.metrics.task_cost, [0, 0]);
-  await a1.close(); await catalog.close();
+  const policyA = JSON.parse((await catalog.readResource({ uri: 'dsh://control/status', _meta: { threadId: A } })).contents[0].text);
+  assert.equal(policyA.chat_id, A); assert.deepEqual(policyA.budget, [0, 1000]);
+  await uiB.updateSettings({ enabled: false }, uiB.snapshot().snapshot.revision);
+  assert.equal((await catalog.callTool({ name: 'spawn_agent', arguments: { task_name: 'disabled', message: 'Must not run' }, _meta: { threadId: B } })).isError, true);
+  assert.equal((await call(catalog, 'list_agents', {}, { threadId: A })).agents.length, 1);
+  const disabled = JSON.parse((await catalog.readResource({ uri: 'dsh://control/status', _meta: { threadId: B } })).contents[0].text);
+  assert.equal(disabled.enabled, false);
+  await uiB.updateSettings({ enabled: true }, uiB.snapshot().snapshot.revision);
+  await a1.close();
   await call(a2, 'followup_task', { target: agentA.id, message: 'HOLD_ACROSS_DISCONNECT Reply once more, without tools.' });
   await until(() => !!releaseHeld);
   await a2.close();
@@ -104,12 +119,12 @@ try {
   releaseHeld = undefined;
   await until(() => completed(a3, agentA.id));
   assert.equal(endpoint(A).pid, pidA, 'Closing another connection must preserve this chat host.');
-  const agentB = (await call(b, 'spawn_agent', { task_name: 'same_name', message: 'Reply briefly, without tools.' })).agent;
+  const agentB = (await call(catalog, 'spawn_agent', { task_name: 'same_name', message: 'Reply briefly, without tools.' }, { thread_id: B })).agent;
   assert.notEqual(agentA.id, agentB.id);
   await until(() => completed(b, agentB.id));
   assert.deepEqual(uiA.snapshot().snapshot.settings.round_budget, [0, 1000]);
   assert.deepEqual(uiB.snapshot().snapshot.settings.round_budget, [0, 3000]);
-  await a3.close();
+  await catalog.close(); await a3.close();
   await until(() => !existsSync(join(data, 'chats', A, 'mcp-endpoint.json')), 10000);
   const a4 = await connect(A);
   assert.notEqual(endpoint(A).pid, pidA);
@@ -119,7 +134,9 @@ try {
   const report = { ok: true, directory, runtime, paid_api_calls: 0, local_model_requests: requests,
     checks: ['simultaneous discovery and two chats', 'same-chat host reuse', 'catalog cannot execute tasks', 'tasks and budgets isolated',
       'cross-chat reads denied', 'authentication rejects an invalid token', 'close one connection without stopping others',
-      'running task survives last-client disconnect', 'idle host cleanup', 'persisted reconnect', 'other chat survives restart'] };
+      'running task survives last-client disconnect', 'idle host cleanup', 'persisted reconnect', 'other chat survives restart',
+      'host metadata routes task calls to independent chats', 'conflicting or invalid identities rejected',
+      'disabled chat stays blocked through shared router', 'policy resource routed to caller'] };
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
 } finally {
   for (const client of uiClients) client.close();

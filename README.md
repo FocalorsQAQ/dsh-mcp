@@ -1,6 +1,6 @@
 # DeepSeek Harness as Subagent · dsh MCP
 
-[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.4) · [安装说明 / Installation](docs/install.md)
+[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.5) · [安装说明 / Installation](docs/install.md)
 
 **在线安装器从 GitHub 下载程序及 DeepSeek Harness CLI 核心运行包，并校验文件。手动安装必须同时下载程序 ZIP 与 CLI 核心 ZIP。** CLI 来自官方 dsh 项目，本项目将固定版本的官方 npm 包及其依赖重新分发为 GitHub Release 附件，详见[来源和安装方式](docs/install.md)。本项目为独立社区集成，非 DeepSeek 或 OpenAI 官方产品。
 
@@ -10,7 +10,7 @@
 
 界面支持**简体中文 / English**。在控制窗底部切换，三个窗口即时同步并记住选择；未保存的表单输入会保留。启动时也可用 `DSH_UI_LOCALE=en-US` 指定英文。
 
-点击最小化可收起为**悬浮球**，实时显示所选聊天的代理并发数（含二次外包）。拖动移动，点击展开；断线时显示离线状态。v0.1.4 修复多聊天与全局工具发现争抢数据目录的问题：每个聊天独立任务、队列和预算，共用 API/模型配置；控制窗可切换聊天。详见 [多聊天连接](docs/multi-chat.md)。
+点击最小化可收起为**悬浮球**，实时显示所选聊天的代理并发数（含二次外包）。拖动移动，点击展开；断线时显示离线状态。每个聊天独立任务、队列和预算，共用 API/模型配置；控制窗可切换聊天。v0.1.5 补齐 Codex 实际采用的请求元数据身份路由，修复无启动聊天 ID 时只能列出工具、窗口不自动打开的问题。详见 [多聊天连接](docs/multi-chat.md)。
 
 ```text
 Codex / MCP 客户端
@@ -53,7 +53,7 @@ Codex / MCP 客户端
 
 ## 安装、运行与接入 Codex
 
-普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.4)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
+普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.5)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
 
 计费公式已独立为 `billing/rules.py`，价格表为 `billing/prices.json` 与 `billing/openai-prices.json`。价格表保存后自动重载；可用 `pnpm prices:edit deepseek` / `pnpm prices:edit openai` 打开编辑器，`pnpm prices:check` 校验。可以在配置的 `billing.rules` 中指定自己的 Python 文件；预算、账本和异常处理仍由服务端执行。详见 [Python 自定义计费](docs/billing.md)。
 
@@ -79,7 +79,7 @@ node --env-file-if-exists=.env packaging/launch-server.mjs --config dsh.config.j
 
 按 Codex 客户端的展示方式，工具通常以 `mcp__dsh__spawn_agent` 等名称出现。stdio 的 `command`、`args`、`cwd`、环境变量及超时配置依据 [OpenAI 官方 MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
 
-默认入口按 `CODEX_THREAD_ID` 绑定聊天，每个聊天的后台服务独占 `data_dir/chats/<聊天 UUID>/`，同一聊天的多个 stdio 连接复用该服务。不同聊天可共用根数据目录及 API/模型配置。没有聊天 ID 的连接仅用于工具发现，不能执行代理任务；其他 MCP 客户端需传 `--session-id <UUID>`。诊断或旧宿主可使用 `--single-session` 保留原来的单连接模式，独占所指定的数据目录。详见 [多聊天连接](docs/multi-chat.md)。
+默认入口优先使用启动时的聊天绑定；没有启动 ID 时，按 Codex 每次 MCP 请求元数据中的聊天 ID 路由。每个聊天的后台服务独占 `data_dir/chats/<聊天 UUID>/`，同一聊天的多个连接复用它，共用根目录 API/模型配置。缺少请求身份时仅允许查询共享模型，不能执行代理任务；不能提供元数据的其他客户端需传 `--session-id <UUID>`。共享目录会按 `ui_auto_start` 打开窗口。`--single-session` 保留旧宿主的单连接模式。详见 [多聊天连接](docs/multi-chat.md)。
 
 ## 调用示例
 
@@ -219,6 +219,7 @@ pnpm run smoke
 | `src/server.ts` | dsh 工具定义、输入校验和 MCP 返回格式 |
 | `src/application.ts` | UI/宿主控制 API 与模型 MCP 的共同入口 |
 | `src/multi-client.ts` / `sessions.ts` / `socket-transport.ts` | 多连接适配、聊天目录和后台服务生命周期 |
+| `src/session-router.ts` / `request-context.ts` | Codex 请求元数据身份校验与逐聊天路由 |
 | `src/control-contract.ts` | 控制协议、货币、策略与计费类型 |
 | `src/control-plane.ts` | 用户策略、共享轮次预算、预留和持久账本 |
 | `src/models.ts` | 模型目录、元数据读取与复核价格 |

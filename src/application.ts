@@ -1,7 +1,7 @@
 import type { Config } from './config.ts';
 import { createBackendFactory } from './backend.ts';
 import { AgentManager } from './manager.ts';
-import { createServer } from './server.ts';
+import { createServer, type ServerRouting } from './server.ts';
 import { DshError, type BackendFactory, type DeliveryTransport } from './types.ts';
 
 /** Trusted UI/host API, deliberately not registered as model-facing MCP tools. */
@@ -17,18 +17,19 @@ export function createApplication(config: Config, backend: BackendFactory = crea
     refreshModels: () => controls.refreshModels(),
     subscribe: (listener: (value: ReturnType<typeof snapshot>) => void) => manager.subscribe(() => listener(snapshot())),
   };
-  const discoveryMethods = new Set(['list', 'read', 'wait', 'listModel', 'listEffort', 'listDeliveries']);
-  return { ui, createMcpServer: (discovery = false) => createServer(discovery ? new Proxy(manager, {
+  const discoveryMethods = new Set(['listModel', 'listEffort']);
+  return { ui, createMcpServer: (discovery = false, routing?: ServerRouting) => createServer(discovery ? new Proxy(manager, {
     get(target, key) {
       const value = Reflect.get(target, key, target);
       if (typeof value !== 'function') return value;
       return (...args: unknown[]) => {
-        if (!discoveryMethods.has(String(key))) throw new DshError('SESSION_REQUIRED', 'This connection is for tool discovery. Start a chat-bound connection with CODEX_THREAD_ID or --session-id.');
+        if (!discoveryMethods.has(String(key))) throw new DshError('SESSION_REQUIRED', 'The host must supply chat identity in request metadata, CODEX_THREAD_ID or --session-id.');
         return Reflect.apply(value, target, args);
       };
     },
-  }) : manager, discovery ? 'Catalog connection only; task execution requires a chat-bound MCP connection. ' :
-    config.codex_thread_id ? 'Chat binding: ' + config.codex_thread_id + '. Tasks, queues and budgets are isolated to this chat. ' : ''), close: () => manager.shutdown() };
+  }) : manager, discovery ? 'Shared connection: each request is routed using the host-supplied chat ID in MCP metadata. No model-selected chat argument is needed. Tasks, queues and budgets remain isolated per chat. ' :
+    config.codex_thread_id ? 'Chat binding: ' + config.codex_thread_id + '. Tasks, queues and budgets are isolated to this chat. ' : '',
+    { catalog: discovery, routing, sessionId: discovery ? undefined : config.codex_thread_id }), close: () => manager.shutdown() };
 }
 
 export type DshApplication = ReturnType<typeof createApplication>;

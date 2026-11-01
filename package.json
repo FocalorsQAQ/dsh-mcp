@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "license": "MIT",
   "author": "FocalorsQAQ",
@@ -68,6 +68,7 @@
     "test:orb-ui": "node scripts/test-orb-ui.mjs",
     "test:multi-client": "node scripts/test-multi-client.mjs",
     "test:session-ui": "node scripts/test-session-ui.mjs",
+    "test:codex-host": "node scripts/test-codex-host.mjs",
     "test:i18n-ui": "node scripts/test-i18n-ui.mjs",
     "test:api-ui": "node scripts/test-api-ui.mjs",
     "test:model-ui": "node scripts/test-model-ui.mjs",

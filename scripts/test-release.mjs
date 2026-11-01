@@ -29,7 +29,7 @@ const upgradeIndex = process.argv.indexOf('--upgrade-from');
 const upgradeFrom = upgradeIndex < 0 ? undefined : process.argv[upgradeIndex + 1];
 let previousConfig;
 if (upgradeIndex >= 0) {
-  assert.match(upgradeFrom ?? '', /^0\.1\.[013]$/);
+  assert.match(upgradeFrom ?? '', /^0\.1\.[0134]$/);
   const baselineArgs = args.filter(arg => !arg.startsWith('/LOG='));
   await run(testInstaller(upgradeFrom, directory),
     [...baselineArgs, `/LOG=${join(directory, 'baseline-install.log')}`], { env: installEnvironment });
@@ -56,7 +56,7 @@ assert.equal(initialization.status, 'ready');
 if (previousConfig) {
   assert.equal(readFileSync(join(install, 'dsh.config.json'), 'utf8'), previousConfig);
   assert.equal(readFileSync(join(data, 'keep-on-upgrade.txt'), 'utf8'), 'existing user data');
-  if (upgradeFrom !== '0.1.3') assert(initialization.links.migrated > 0, 'The upgrade must migrate older runtime links.');
+  if (['0.1.0', '0.1.1'].includes(upgradeFrom)) assert(initialization.links.migrated > 0, 'The upgrade must migrate older runtime links.');
 }
 assert.match(readFileSync(join(codexHome, 'config.toml'),'utf8'), /\[mcp_servers\.dsh\]/);
 assert(readFileSync(join(codexHome, 'config.toml'),'utf8').startsWith(originalCodex));
@@ -90,6 +90,7 @@ writeFileSync(join(directory,'ui-autostart.log'),autoStart);
 writeFileSync(join(directory,'orb-ui.log'), await run(process.execPath,[resolve('scripts/test-orb-ui.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 writeFileSync(join(directory,'multi-client.log'), await run(process.execPath,[resolve('scripts/test-multi-client.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 writeFileSync(join(directory,'session-ui.log'), await run(process.execPath,[resolve('scripts/test-session-ui.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
+if (process.env.DSH_TEST_CODEX_EXE) writeFileSync(join(directory,'codex-host.log'), await run(process.execPath,[resolve('scripts/test-codex-host.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 const smoke=await run(process.execPath,[resolve('scripts/smoke.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}});
 writeFileSync(join(directory,'smoke.log'),smoke);
 writeFileSync(join(data,'keep-on-uninstall.txt'),'user data must survive uninstall');

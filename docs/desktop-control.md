@@ -40,6 +40,8 @@ node scripts/start-ui.mjs --config D:/path/to/dsh.config.json
 
 控制窗与 MCP 必须使用相同的配置和根 `data_dir`。MCP 启动配置使用 `packaging/launch-server.mjs`，无需把 Electron 配置成 MCP 命令。更新代码后需要重启已有 dsh MCP 连接，让它加载新的 UI 连接服务；`config/codex.toml` 是现有接入样例。
 
+v0.1.5 起，没有启动聊天 ID 的 Codex 共享连接同样会自动打开窗口。首次工具请求通过宿主元数据绑定对应聊天；此前窗口可能显示等待连接。无需在 Codex 配置里给所有聊天写死同一个 ID。
+
 **窗口可以先打开。** 没有运行中的 dsh 服务时显示“等待服务连接”，禁用设置修改；MCP 启动后自动连接。关闭窗口仅退出 UI，不关闭 MCP 或代理；MCP 退出时窗口保留上次数据并明确标记已断开，自动等待重连。不会为了打开界面启动第二个代理管理器，也不会自动执行模型任务。
 
 ## 聊天选择
@@ -67,7 +69,7 @@ existing tasks continue. The orb supports both interface languages.
 
 | 控件 | 行为 |
 | --- | --- |
-| 启用外包 | 即时更新所选聊天的 `enabled`，影响该聊天 MCP 的整个工具组。关闭后仍可在窗口重新开启。 |
+| 启用外包 | 即时更新所选聊天的 `enabled`，代码拒绝该聊天的工具执行。固定绑定连接会隐藏工具；未知调用方的共享全局清单仍展示公共接口。关闭后仍可在窗口重新开启。 |
 | 顶层代理数量 | 按同时运行数设置；支持步进按钮和直接输入，Enter 或移开焦点保存。 |
 | 允许二次外包 | 用户授权开关；实际执行还需要模型的深度授权。 |
 | 最大外包深度 / 子代理上限 | 对应 `max_depth_user` / `max_children_user`；禁止二次外包时暂时禁用这两个控件并保留原值。 |

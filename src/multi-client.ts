@@ -13,6 +13,8 @@ import { launchControlUi } from './ui-launcher.ts';
 import { sessionConfig, sessionDirectory, selectedSessionId, writeSessionInfo } from './sessions.ts';
 import { handshakeLine, SocketMcpTransport } from './socket-transport.ts';
 import { DshError, errorText } from './types.ts';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SessionRouter } from './session-router.ts';
 
 const endpointSchema = z.object({ version: z.literal(1), host_id: z.uuid(), pid: z.number().int().positive(),
   port: z.number().int().min(1).max(65535), token: z.string().regex(/^[a-f0-9]{64}$/), fingerprint: z.string(), session_id: z.string() }).strict();
@@ -39,7 +41,7 @@ async function connect(directory: string, id: string, expected: string): Promise
   } catch (error) { clearTimeout(timeout); socket.destroy(); throw error; }
 }
 
-async function proxy(base: Config, id: string, args: string[]) {
+async function connectSession(base: Config, id: string, args: string[]): Promise<Socket> {
   const directory = sessionDirectory(base.data_dir, id, true), expected = fingerprint(base);
   let socket: Socket | undefined, started = false;
   const deadline = Date.now() + 15000;
@@ -61,7 +63,11 @@ async function proxy(base: Config, id: string, args: string[]) {
     }
   }
   if (!socket) throw new DshError('SESSION_START', 'The chat service did not start. See host.log in its chat data directory.');
-  const connection = socket;
+  return socket;
+}
+
+async function proxy(base: Config, id: string, args: string[]) {
+  const connection = await connectSession(base, id, args);
   const stop = () => connection.destroy();
   process.once('SIGINT', stop); process.once('SIGTERM', stop); process.stdout.once('error', stop);
   try {
@@ -80,6 +86,14 @@ async function host(base: Config, id: string, configPath?: string) {
   try { bridge = await startUiBridge(application.ui, config.data_dir); }
   catch (error) { await application.close(); throw error; }
   const hostId = randomUUID(), token = randomBytes(32).toString('hex');
+  const router = id === 'discovery' ? new SessionRouter(async chatId => {
+    const socket = await connectSession(base, chatId, [
+      ...(configPath ? ['--config', configPath] : []), '--workspace', base.workspace_root, '--data-dir', base.data_dir,
+    ]);
+    const client = new Client({ name: 'dsh-chat-router', version: '1' });
+    try { await client.connect(new SocketMcpTransport(socket)); return client; }
+    catch (error) { await client.close().catch(() => {}); socket.destroy(); throw error; }
+  }, base.session_idle_timeout_ms) : undefined;
   const endpointPath = join(config.data_dir, 'mcp-endpoint.json');
   const sockets = new Set<Socket>();
   const servers = new Set<ReturnType<typeof application.createMcpServer>>();
@@ -95,13 +109,13 @@ async function host(base: Config, id: string, configPath?: string) {
         if (auth.session_id !== id || !timingSafeEqual(Buffer.from(auth.token, 'hex'), Buffer.from(token, 'hex'))) throw new Error('Unauthorized local connection.');
         if (auth.app_tools_pipe) process.env.CODEX_APP_TOOLS_PIPE_PATH = auth.app_tools_pipe;
         if (closing || socket.destroyed) { socket.destroy(); return; }
-        server = application.createMcpServer(id === 'discovery'); servers.add(server);
+        server = application.createMcpServer(id === 'discovery', router); servers.add(server);
         const connectionServer = server;
         server.server.onclose = () => { servers.delete(connectionServer); void connectionServer.close().catch(() => {}); };
         server.server.oninitialized = () => {
-          if (closing || uiStarted || id === 'discovery') return;
+          if (closing || uiStarted) return;
           uiStarted = true;
-          void launchControlUi(base, configPath, id).catch(error => process.stderr.write('[dsh UI] ' + errorText(error) + '\n'));
+          void launchControlUi(base, configPath, id === 'discovery' ? undefined : id).catch(error => process.stderr.write('[dsh UI] ' + errorText(error) + '\n'));
         };
         socket.write('{"ok":true}\n');
         await server.connect(new SocketMcpTransport(socket));
@@ -117,6 +131,7 @@ async function host(base: Config, id: string, configPath?: string) {
     if (listener.listening) listener.close();
     for (const server of servers) await server.close().catch(() => {});
     for (const socket of sockets) socket.destroy();
+    await router?.close();
     try { await bridge.close(); } finally { await application.close(); }
     try { if (JSON.parse(readFileSync(endpointPath, 'utf8')).host_id === hostId) unlinkSync(endpointPath); } catch { /* Another generation owns cleanup. */ }
   })();

@@ -1,23 +1,34 @@
-多聊天 MCP 连接修复 / Multiple-chat MCP connections — Windows x64
+Codex 请求身份路由修复 / Codex request identity routing — Windows x64
 
-v0.1.4 修复多个 Codex 聊天和全局工具发现同时连接时争抢数据目录，造成 MCP 握手失败、工具无法持续发现的问题。每个聊天使用独立后台服务，同一聊天的多个连接复用它，保留原有数据锁。
+v0.1.5 修复 v0.1.4 与 Codex 实际启动方式的兼容问题。Codex 会在每次 MCP 请求的元数据中传聊天 ID，而不一定提供启动环境变量；旧版因此只展示工具、拒绝任务，并跳过自动打开窗口。现在按宿主请求身份路由到独立聊天服务，共享连接也会自动打开窗口。
+
+身份不再需要模型填写；缺失、冲突或非法身份仍会被拒绝。返回的 `control.chat_id` 可核对实际调用聊天。每个聊天的任务、预算和限制继续独立，API/模型配置共用。共享全局清单不能针对尚未识别的聊天隐藏工具，但每个聊天的禁用和预算限制仍在代码中执行。
+
+已用本机实际 Codex app-server 验证无 `CODEX_THREAD_ID` 的两聊天请求路由，并覆盖真实 Electron 无身份启动、模拟任务、禁用约束和断线重连；未调用付费模型。升级后需让 Codex 重新加载 dsh 连接。
+
+Version 0.1.5 fixes the actual Codex startup path: chat identity arrives in MCP
+request metadata, not necessarily in the process environment. Requests now route
+to isolated chat services, and shared connections also auto-open the UI. Missing
+or conflicting identity fails closed. Real Codex app-server integration is tested
+without model turns. Reload dsh after upgrading.
+
+本版保留 v0.1.4 的多连接架构：每个聊天使用独立后台服务，同一聊天的多个连接复用它，保留原有数据锁。
 
 - 每个聊天独立任务、队列、预算、花费和并发设置，共用 API 密钥与模型配置。
 - 控制窗增加“当前聊天”选择；悬浮球显示所选聊天实时并发。切换不会把旧表单写入另一个聊天。
 - 连接断开不再终止其他连接或活动任务。没有 MCP 连接和活动任务时，后台服务默认空闲 60 秒后退出；重连恢复对应聊天记录。
-- 没有聊天 ID 的全局发现连接只能发现工具和模型，不能执行任务。
+- 启动时没有聊天 ID 的连接按每次请求中的宿主身份路由；请求也没有身份时只能查询共享模型，不能执行任务。
 - 旧设置、API 配置、会话和账本保留。旧账本不自动分配到新聊天；新聊天仅继承旧用户策略作为初始值。
 
 **升级后重启 Codex，让连接加载新版入口。** 任务仍受预算和超时限制；需要立即停止时使用中断或关闭代理。并发上限和预算按聊天执行，当前没有跨聊天总上限。详情见 [多聊天连接](https://github.com/FocalorsQAQ/dsh-mcp/blob/main/docs/multi-chat.md)。
 
-Version 0.1.4 fixes data-directory contention between simultaneous Codex chats
-and global tool discovery. Each chat now has one background service shared by
+This retains the independent per-chat services from v0.1.4. Each chat has one background service shared by
 its stdio connections, with independent tasks, queues, budgets and limits.
 API credentials and model settings remain shared. The desktop selector and
 floating orb follow the selected chat. Disconnecting a client preserves other
 connections and active tasks; idle services exit after 60 seconds by default.
 Restart Codex after upgrading. Old state is retained separately and never
-silently assigned to a chat. Discovery-only connections cannot execute tasks.
+silently assigned to a chat. Calls without chat identity cannot execute tasks.
 
 保留 v0.1.3 的悬浮球、双语言、Codex 同步打开窗口和旧版安装依赖链接修复。原有设置、API 配置和用户数据保留。
 
@@ -38,9 +49,9 @@ English floating control window.
 
 ### 下载与安装
 
-- `dsh-mcp-0.1.4-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
-- `dsh-mcp-0.1.4-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.4-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
+- `dsh-mcp-0.1.5-setup-win-x64.exe`：在线安装器，从 GitHub 下载并校验程序和 CLI 核心包。
+- `dsh-mcp-0.1.5-win-x64.zip`：已编译程序，包含 Node.js 和 Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.5-win-x64.zip`：必需的 DeepSeek Harness CLI、匹配 SDK、Electron 和其他运行依赖。
 - `SHA256SUMS.txt` / `release-manifest.json`：哈希、版本与来源信息。
 
 **手动安装必须同时下载两个 ZIP，解压到同一空文件夹，再运行 `Initialize.cmd`。只下载程序 ZIP 或源码不能直接运行。**

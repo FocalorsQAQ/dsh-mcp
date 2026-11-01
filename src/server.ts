@@ -1,8 +1,16 @@
 import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult, ReadResourceResult, ServerRequest, ServerNotification } from '@modelcontextprotocol/sdk/types.js';
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import { z } from 'zod';
 import type { AgentTools } from './control.ts';
 import { DshError, errorText, deliveryStatusSchema } from './types.ts';
+import { requestSessionId } from './request-context.ts';
+
+export type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
+export type ServerRouting = {
+  tool(name: string, input: Record<string, unknown>, extra: ToolExtra, fallback: () => Promise<CallToolResult>): Promise<CallToolResult>;
+  policy(extra: ToolExtra): Promise<ReadResourceResult>;
+};
 
 const target = z.string().min(1).describe('Agent ID, canonical task path, or unambiguous task_name.');
 const message = z.string().min(1).max(100000);
@@ -21,12 +29,13 @@ async function callResult(action: () => unknown | Promise<unknown>): Promise<Cal
 }
 
 /** MCP stdio tool names mirror collaboration; the server registration supplies the dsh namespace. */
-export function createServer(manager: AgentTools, extraInstructions = ''): McpServer {
-  const policy = manager.policySource;
+export function createServer(manager: AgentTools, extraInstructions = '', options: { catalog?: boolean; sessionId?: string; routing?: ServerRouting } = {}): McpServer {
+  const policy = options.catalog ? undefined : manager.policySource;
   const result = (action: () => unknown | Promise<unknown>) => callResult(async () => {
     policy?.assertEnabled();
     const value = await action();
-    return policy ? { ...(value as Record<string, unknown>), control: policy.agentInfo() } : value;
+    return policy ? { ...(value as Record<string, unknown>), control: { ...policy.agentInfo(),
+      ...(options.sessionId ? { chat_id: options.sessionId } : {}) } } : value;
   });
   extraInstructions += policy ? '\nHost-enforced outsourcing policy: ' + JSON.stringify(policy.agentInfo()) : '';
   const server = new McpServer({ name: 'dsh', version: '0.1.0' }, {
@@ -35,7 +44,15 @@ export function createServer(manager: AgentTools, extraInstructions = ''): McpSe
 
   const registered: RegisteredTool[] = [];
   const register: typeof server.registerTool = (name, config, handler) => {
-    const tool = server.registerTool(name, config, handler); registered.push(tool); return tool;
+    const wrapped = async (input: Record<string, unknown>, extra: ToolExtra): Promise<CallToolResult> => {
+      try {
+        const id = requestSessionId(extra._meta);
+        if (options.sessionId && id && id !== options.sessionId) throw new DshError('SESSION_IDENTITY', 'Request chat does not match this connection.');
+        const fallback = async () => await Reflect.apply(handler, undefined, [input, extra]) as CallToolResult;
+        return options.routing ? await options.routing.tool(name, input, extra, fallback) : await fallback();
+      } catch (error) { return callResult(() => { throw error; }); }
+    };
+    const tool = server.registerTool(name, config, wrapped as typeof handler); registered.push(tool); return tool;
   };
 
   register('spawn_agent', {
@@ -166,26 +183,32 @@ export function createServer(manager: AgentTools, extraInstructions = ''): McpSe
     }, input => result(() => manager.retryDelivery!(input.delivery_id, input.allow_duplicate)));
   }
 
-  if (policy) {
+  if (policy || options.catalog) {
     const uri = 'dsh://control/status';
     server.registerResource('outsourcing-policy', uri, { title: 'Outsourcing policy', mimeType: 'application/json',
       description: 'Read-only host policy, shared round budget and disable notice. Available even when all tools are disabled.' },
-    () => ({ contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(policy.agentInfo()) }] }));
+    async (_uri, extra) => {
+      const id = requestSessionId(extra._meta);
+      if (options.sessionId && id && id !== options.sessionId) throw new DshError('SESSION_IDENTITY', 'Request chat does not match this connection.');
+      return options.routing ? options.routing.policy(extra) :
+        { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(policy ? { ...policy.agentInfo(),
+          ...(options.sessionId ? { chat_id: options.sessionId } : {}) } : { session_required: true }) }] };
+    });
     const description = registered[0]!.description ?? '';
     let previous = '';
     const sync = () => {
-      const info = policy.agentInfo();
+      const info = policy?.agentInfo();
       let models: string[] = [];
       try { models = manager.listModel?.().models ?? []; } catch { /* Fail closed at dispatch; keep status available. */ }
-      const text = JSON.stringify(info) + '\nAvailable model IDs: ' + JSON.stringify(models) + '. Use list_effort(model_id) for allowed reasoning_effort values.';
+      const text = (info ? 'Host-enforced policy: ' + JSON.stringify(info) : 'Chat policy is selected from host request metadata. Read list_model before spawning for the current chat budget and limits.') + '\nAvailable model IDs: ' + JSON.stringify(models) + '. Use list_effort(model_id) for allowed reasoning_effort values.';
       if (text === previous) return;
       previous = text;
-      registered[0]!.update({ description: description + '\nHost-enforced policy: ' + text });
-      for (const tool of registered) if (tool.enabled !== info.enabled) info.enabled ? tool.enable() : tool.disable();
+      registered[0]!.update({ description: description + '\n' + text });
+      if (info) for (const tool of registered) if (tool.enabled !== info.enabled) info.enabled ? tool.enable() : tool.disable();
       if (server.isConnected()) void server.server.sendResourceUpdated({ uri }).catch(() => {});
     };
     sync();
-    const unsubscribe = policy.subscribe(sync);
+    const unsubscribe = manager.policySource?.subscribe(sync) ?? (() => {});
     const timer = setInterval(() => { try { sync(); } catch { /* Corrupt config fails dispatch closed. */ } }, 1000);
     timer.unref();
     const close = server.close.bind(server);
