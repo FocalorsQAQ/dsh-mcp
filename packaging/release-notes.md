@@ -1,3 +1,5 @@
+The Windows hook review launcher now clears an inherited TERM=dumb and starts the desktop-bundled Codex CLI with --no-daemon, fixing both startup errors when opened from Codex automation. Wait for the Codex input screen before entering /hooks.
+
 Settings can now be edited before any agent runs. Codex captures an immutable outsourcing configuration when a task is submitted: enablement, top-level concurrency, delegation limits, budgets, and selected models/efforts. Later edits apply to future submissions; running agents and their descendants retain their original requirements.
 
 The floating panel no longer selects a chat or shows spending/token cards. It aggregates online subagents across works; expand the count for work names, agent names, models and reasoning efforts. The orb uses the same aggregate count. Chinese and English remain supported.

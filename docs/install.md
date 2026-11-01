@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.7](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.7)
+[下载 v0.1.8](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.8)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.7-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.8-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -29,7 +29,7 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 这是全局注册的 MCP 服务，可在 Codex 的 MCP 设置中查看，不是插件市场安装项。每个聊天独立任务和预算，共用 API、模型和下一轮默认配置。窗口汇总所有 work 的在线子代理，无需选择聊天。
 
-0.1.7 使用提交事件快照。安装后重启 Codex，并运行安装目录的 `Review task hook.cmd`，在 Codex CLI 输入 `/hooks`，审查并信任 `dsh` 的 `UserPromptSubmit` 钩子。安装器不自动信任脚本。若 hook 功能被关闭，需要先启用。之后发布新任务即可在模型运行前固定预算、开关和模型；没有快照的旧轮次会被拒绝。详见 [任务配置快照](task-snapshots.md)。
+0.1.8 使用提交事件快照。安装后重启 Codex，并运行安装目录的 `Review task hook.cmd`，在 Codex CLI 输入 `/hooks`，审查并信任 `dsh` 的 `UserPromptSubmit` 钩子。安装器不自动信任脚本。若 hook 功能被关闭，需要先启用。之后发布新任务即可在模型运行前固定预算、开关和模型；没有快照的旧轮次会被拒绝。详见 [任务配置快照](task-snapshots.md)。
 
 ## 手动安装已编译程序
 
@@ -37,8 +37,8 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.7-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.7-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.8-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.8-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -109,7 +109,7 @@ Codex after upgrading. Old root state is retained separately and is not silently
 assigned to a chat. This is a globally registered MCP server, not a marketplace
 plugin. See [multiple chats](multi-chat.md).
 
-Version 0.1.7 captures settings at task submission using a local Codex UserPromptSubmit hook. Review and trust the hook with `/hooks` before submitting a new task. The installer registers it but never bypasses trust. Settings remain editable without a running chat; changes apply to future tasks only. The UI aggregates all online subagents and no longer selects a chat.
+Version 0.1.8 captures settings at task submission using a local Codex UserPromptSubmit hook. Review and trust the hook with `/hooks` before submitting a new task. The installer registers it but never bypasses trust. Settings remain editable without a running chat; changes apply to future tasks only. The UI aggregates all online subagents and no longer selects a chat.
 
 Version 0.1.3 fixes upgrades from earlier releases, including installations left
 in a mixed state after the v0.1.2 initialization error. Run the newer installer
