@@ -141,12 +141,29 @@ try {
   assert.equal((await call(a4, 'list_agents')).agents[0].id, agentA.id, 'Reconnect must retain only this chat\'s tasks.');
   assert.deepEqual((await call(a4, 'list_model')).control.budget, [0, 1000]);
   assert.equal((await call(b, 'list_agents')).agents[0].id, agentB.id, 'Another chat remains connected during restart.');
+  // Stop the actual Harness worker while its local mock HTTP response is held open.
+  await call(a4, 'followup_task', { target: agentA.id, message: 'HOLD_ACROSS_DISCONNECT Service shutdown fixture, do not use tools.' });
+  await until(() => !!releaseHeld);
+  const beforeStopRequests = requests;
+  gate.stopService();
+  for (const client of [a4, b]) {
+    assert.equal((await call(client, 'get_status')).enabled, false);
+    const rejected = await client.callTool({ name: 'spawn_agent', arguments: { task_name: 'after_stop', message: 'must not run' }, _meta: { turn_id: turns[identities.get(client)] } });
+    assert(rejected.isError); assert.match(JSON.stringify(rejected), /OUTSOURCING_DISABLED/);
+    assert.equal((await client.listTools()).tools.length, 18);
+  }
+  await until(() => uiA.snapshot().status === 'connected' && uiA.snapshot().snapshot.runtime.active_count === 0);
+  assert.equal(uiA.snapshot().snapshot.runtime.agents[0].status, 'closed');
+  const stoppedState = JSON.parse(readFileSync(join(data, 'chats', A, 'state.json'), 'utf8'));
+  assert.equal(stoppedState.deliveries.filter(item => item.kind === 'service_stopped' && item.thread_id === A).length, 1);
+  assert.equal(requests, beforeStopRequests);
   const report = { ok: true, directory, runtime, paid_api_calls: 0, local_model_requests: requests,
     checks: ['simultaneous discovery and two chats', 'same-chat host reuse', 'catalog cannot execute tasks', 'tasks and budgets isolated',
       'cross-chat reads denied', 'authentication rejects an invalid token', 'close one connection without stopping others',
       'running task survives last-client disconnect', 'idle host cleanup', 'persisted reconnect', 'other chat survives restart',
       'host metadata routes task calls to independent chats', 'conflicting or invalid identities rejected',
-      'new-turn disable cannot alter existing snapshots', 'policy resource routed to caller'] };
+      'new-turn disable cannot alter existing snapshots', 'policy resource routed to caller',
+      'service shutdown terminates real Harness worker during a held API request', 'cross-process persistent rejection with stable tool inventory'] };
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
 } finally {
   for (const client of uiClients) client.close();

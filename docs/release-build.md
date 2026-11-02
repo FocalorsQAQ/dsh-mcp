@@ -40,7 +40,12 @@ provider, the packaged Electron windows, and installation/uninstallation checks.
 No credentials, model configuration, chats, test artifacts or local `.env` files
 belong in either archive or source control.
 
-Also test upgrades using `node scripts/test-release.mjs --upgrade-from 0.1.1
+Test the current upgrade path using `node scripts/test-release.mjs --upgrade-from 0.1.8`.
+The isolated installer disables Windows startup registration with `/UISTARTUP=0`;
+the companion itself is tested separately with temporary configuration and processes.
+The packaged service-close test uses mock workers and delivery callbacks, never real chats.
+
+For historical recovery coverage, use `node scripts/test-release.mjs --upgrade-from 0.1.1
 --through-failed-012` (on one command line). Keep the original baseline release
 archives in `release-output` and their source tags locally. This reproduces v0.1.2's old-link
 conflict, then verifies recovery by the new installer, preservation of user

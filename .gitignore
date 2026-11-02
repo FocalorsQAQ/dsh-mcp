@@ -17,3 +17,6 @@ release-output/
 *.local.toml
 /codex-registration*.json
 /initialization-result.json
+/ui-startup-registration.json
+/ui-startup-status.json
+/ui-startup-status.json.*.tmp

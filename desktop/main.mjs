@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { app, BrowserWindow, ipcMain, screen, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, safeStorage, dialog } from 'electron';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -16,7 +16,7 @@ import { outsourcingCommandSchema } from '../dist/global-control.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({ args: process.argv.slice(2), options: {
-  config: { type: 'string' }, workspace: { type: 'string' }, 'data-dir': { type: 'string' }, 'session-id': { type: 'string' }, 'api-keys': { type: 'boolean' }, models: { type: 'boolean' }, 'auto-start': { type: 'boolean' },
+  config: { type: 'string' }, workspace: { type: 'string' }, 'data-dir': { type: 'string' }, 'session-id': { type: 'string' }, 'api-keys': { type: 'boolean' }, models: { type: 'boolean' }, 'auto-start': { type: 'boolean' }, quit: { type: 'boolean' },
 }, strict: false, allowPositionals: true });
 const autoStart = values['auto-start'] === true;
 const config = loadConfig(values.config ?? (autoStart ? undefined : join(root, 'dsh.config.json')), { workspace: values.workspace, dataDir: values['data-dir'] });
@@ -44,22 +44,17 @@ function savePreferences(next) {
 }
 let window;
 let ownerHelper;
-let orbWindow;
-let orbOwnerHelper;
-let floating = false;
-let orbDrag;
-let panelContentBounds;
-let controlClosing = false;
-const orbSize = 72;
 let compact = false;
 let fullHeight = 840;
-const state = () => ({ ...dashboard.snapshot(), window: { compact, floating } });
-const publish = () => { for (const target of [window, orbWindow]) if (target && !target.isDestroyed() && !target.webContents.isLoadingMainFrame()) target.webContents.send('dsh:state', state()); };
+let allowClose = false;
+let closeRequest;
+const state = () => ({ ...dashboard.snapshot(), window: { compact } });
+const publish = () => { if (window && !window.isDestroyed() && !window.webContents.isLoadingMainFrame()) window.webContents.send('dsh:state', state()); };
 dashboard.subscribe(publish);
 
 function acceptsControl(event) {
-  return [window, orbWindow].some(target => target && !target.isDestroyed() && event.sender === target.webContents &&
-    event.senderFrame?.url === rendererUrl + (target === orbWindow ? '#orb' : '') && !event.senderFrame.parent);
+  return window && !window.isDestroyed() && event.sender === window.webContents &&
+    event.senderFrame?.url === rendererUrl && !event.senderFrame.parent;
 }
 function trusted(event) {
   if (!acceptsControl(event)) {
@@ -95,7 +90,6 @@ languageHandler('dsh:language:set', value => {
   locale = value;
   window?.setTitle(t('app.title'));
   if (window && !window.isDestroyed()) window.webContents.send('dsh:language', locale);
-  if (orbWindow && !orbWindow.isDestroyed()) orbWindow.webContents.send('dsh:language', locale);
   apiWindow.languageChanged(locale);
   modelWindow.languageChanged(locale);
   return locale;
@@ -130,76 +124,39 @@ function secureContents(target) {
   target.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   target.webContents.session.setPermissionCheckHandler(() => false);
 }
-function orbPosition(point) {
-  const display = screen.getDisplayNearestPoint(point).workArea;
-  return { x: Math.round(Math.max(display.x, Math.min(point.x, display.x + display.width - orbSize))),
-    y: Math.round(Math.max(display.y, Math.min(point.y, display.y + display.height - orbSize))) };
-}
-async function showOrb() {
-  if (floating) return;
-  panelContentBounds = window.getContentBounds();
-  if (!orbWindow || orbWindow.isDestroyed()) {
-    const bounds = window.getBounds();
-    const saved = preferences.orb_bounds;
-    const point = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? saved : { x: bounds.x + bounds.width - orbSize, y: bounds.y };
-    orbWindow = new BrowserWindow({ title: t('app.title'), ...orbPosition(point), width: orbSize, height: orbSize,
-      frame: false, transparent: true, backgroundColor: '#00000000', hasShadow: false, resizable: false,
-      maximizable: false, fullscreenable: false, skipTaskbar: true, show: false,
-      webPreferences: { additionalArguments: ['--dsh-locale=' + locale], preload: join(root, 'desktop/preload.cjs'),
-        contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
-    });
-    orbWindow.removeMenu(); secureContents(orbWindow); orbOwnerHelper = attachOwner(orbWindow);
-    orbWindow.on('closed', () => {
-      orbOwnerHelper?.kill(); orbWindow = undefined;
-      if (floating && !controlClosing && window && !window.isDestroyed()) window.close();
-    });
-    await orbWindow.loadFile(rendererPath, { hash: 'orb' });
-  }
-  floating = true; window.hide(); orbWindow.showInactive(); publish();
-}
 function restoreControl() {
-  const fromOrb = floating;
-  floating = false; orbDrag = undefined; orbWindow?.hide();
   if (window.isMinimized()) window.restore();
   window.show();
-  if (fromOrb && panelContentBounds) window.setContentBounds(panelContentBounds);
   window.focus(); publish();
 }
-handler('dsh:orb:drag', action => {
-  if (!floating || !orbWindow || !['start', 'move', 'end'].includes(action)) return { dragged: false };
-  if (action === 'start') orbDrag = { cursor: screen.getCursorScreenPoint(), bounds: orbWindow.getBounds(), dragged: false };
-  if (!orbDrag) return { dragged: false };
-  if (action === 'move') {
-    const cursor = screen.getCursorScreenPoint(), dx = cursor.x - orbDrag.cursor.x, dy = cursor.y - orbDrag.cursor.y;
-    if (Math.hypot(dx, dy) >= 4) orbDrag.dragged = true;
-    if (orbDrag.dragged) {
-      const point = orbPosition({ x: orbDrag.bounds.x + dx, y: orbDrag.bounds.y + dy });
-      orbWindow.setPosition(point.x, point.y);
-    }
-  }
-  const dragged = orbDrag.dragged;
-  if (action === 'end') {
-    if (dragged) { const { x, y } = orbWindow.getBounds(); try { savePreferences({ ...preferences, orb_bounds: { x, y } }); } catch { /* Moving must still work. */ } }
-    orbDrag = undefined;
-  }
-  return { dragged };
-});
+function requestServiceClose() {
+  if (closeRequest) return closeRequest;
+  closeRequest = (async () => {
+    const response = await dialog.showMessageBox(window, { type: 'warning', title: t('service.confirmTitle'),
+      message: t('service.confirmMessage'), detail: t('service.confirmDetail'),
+      buttons: [t('service.confirmYes'), t('service.cancel')], defaultId: 1, cancelId: 1, noLink: true });
+    if (response.response !== 0) return;
+    await dashboard.stopService();
+    allowClose = true; window.close();
+  })().finally(() => { closeRequest = undefined; });
+  return closeRequest;
+}
 handler('dsh:window:action', async (action) => {
   if (action === 'compact') {
     if (!compact) fullHeight = window.getBounds().height;
     compact = !compact;
     window.setMinimumSize(400, compact ? 212 : 660);
     window.setSize(window.getBounds().width, compact ? 212 : fullHeight);
-  } else if (action === 'minimize') await showOrb();
-  else if (action === 'restore') restoreControl();
-  else if (action === 'close') window.close();
+  } else if (action === 'restore') restoreControl();
+  else if (action === 'close') await requestServiceClose();
   else throw new Error('Unknown window action.');
   publish(); return state();
 });
 
-if (!app.requestSingleInstanceLock({ autoStart })) app.quit();
+if (!app.requestSingleInstanceLock({ autoStart, quit: values.quit === true }) || values.quit) app.quit();
 else {
   app.on('second-instance', (_event, argv, _directory, additionalData) => {
+    if (additionalData?.quit === true || argv.includes('--quit')) { allowClose = true; window?.close(); return; }
     // Reconnecting MCP clients must not restore minimized windows or steal focus.
     if (additionalData?.autoStart === true || argv.includes('--auto-start')) return;
     if (window) { restoreControl(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); }
@@ -213,7 +170,7 @@ else {
     const x = saved ? Math.min(Math.max(saved.x, display.x), display.x + display.width - width) : work.x + work.width - width - 24;
     const y = saved ? Math.min(Math.max(saved.y, display.y), display.y + display.height - fullHeight) : work.y + 24;
     window = new BrowserWindow({ title: t('app.title'), width, height: fullHeight, x, y,
-      minWidth: 400, minHeight: 660, maxWidth: 640, frame: false, show: false, skipTaskbar: true,
+      minWidth: 400, minHeight: 660, maxWidth: 640, frame: false, show: false, skipTaskbar: true, minimizable: false,
       backgroundColor: '#212121', roundedCorners: true, autoHideMenuBar: true,
       webPreferences: { additionalArguments: ['--dsh-locale=' + locale], preload: join(root, 'desktop', 'preload.cjs'), contextIsolation: true,
         nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
@@ -222,11 +179,15 @@ else {
     ownerHelper = attachOwner(window);
     secureContents(window);
     window.once('ready-to-show', () => { if (autoStart) window.showInactive(); else window.show(); });
-    window.on('close', () => {
-      controlClosing = true;
+    window.on('close', event => {
+      if (!allowClose) {
+        event.preventDefault();
+        void requestServiceClose().catch(error => dialog.showMessageBox(window, { type: 'error',
+          title: t('service.confirmTitle'), message: friendlyError(error?.code), buttons: [t('service.acknowledge')] }));
+        return;
+      }
       apiWindow.close();
       modelWindow.close();
-      orbWindow?.close();
       const bounds = window.getBounds();
       try { savePreferences({ ...preferences, locale, bounds: { ...bounds, height: fullHeight } }); } catch { /* Window close must still work. */ }
     });
@@ -238,4 +199,5 @@ else {
   }).catch(error => { process.stderr.write('[dsh UI] ' + error.message + '\n'); app.quit(); });
 }
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => dashboard.close());
+// Programmatic app shutdown (--quit / installer / Electron host) is maintenance, not a user service stop.
+app.on('before-quit', () => { allowClose = true; dashboard.close(); });

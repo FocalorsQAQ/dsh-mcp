@@ -76,6 +76,9 @@ export class AgentManager {
   private concurrencyOverride?: number;
   readonly globalControl: OutsourcingSwitch;
   private unsubscribeGlobal?: () => void;
+  private serviceStopId?: string;
+  private serviceStopJob?: Promise<void>;
+  private serviceStopRetry?: ReturnType<typeof setTimeout>;
 
   constructor(readonly config: Config, private readonly backendFactory: BackendFactory,
     private readonly deliver: DeliveryTransport = createDeliveryTransport(config)) {
@@ -88,6 +91,7 @@ export class AgentManager {
       this.cursor = state.cursor;
       this.events = state.events;
       this.deliveries = state.deliveries;
+      this.serviceStopId = state.service_stop_id;
       this.concurrencyOverride = state.runtime_settings?.max_concurrent_agents;
       this.controlPlane = new ControlPlane(config.control, state.control, () => this.save(), undefined, new PythonBilling(config.billing), undefined, this.globalControl);
       this.controlPlane.selection = this.runtimeModels;
@@ -100,7 +104,9 @@ export class AgentManager {
         }
         this.changed.emit('change');
       });
-      this.unsubscribeGlobal = this.globalControl.subscribe(() => this.controlPlane.globalControlChanged());
+      this.unsubscribeGlobal = this.globalControl.subscribe(() => {
+        this.controlPlane.globalControlChanged(); this.observeServiceStop();
+      });
       for (const delivery of this.deliveries) {
         if (!delivery.attempts && delivery.status !== 'pending') {
           delivery.attempts = 1;
@@ -123,7 +129,10 @@ export class AgentManager {
         this.agents.set(agent.id, agent);
       }
       for (const agent of this.agents.values()) {
-        if (['starting', 'running', 'pausing', 'stopping'].includes(agent.status)) {
+        if (agent.service_stop_id && ['starting', 'running', 'pausing', 'stopping'].includes(agent.status)) {
+          agent.status = 'closed'; agent.pending = []; agent.active_message = null; agent.queue_revision++;
+          agent.finish_reason = 'service_disabled'; agent.error = 'DSH as Subagent 服务已被用户停用。';
+        } else if (['starting', 'running', 'pausing', 'stopping'].includes(agent.status)) {
           agent.status = agent.pause_requested ? 'paused' : 'interrupted';
           agent.finish_reason = 'interrupted';
           agent.error = 'MCP server stopped before this task completed. The active input is not retried; use resume_agent for a paused queue or followup_task for a new instruction.';
@@ -133,6 +142,7 @@ export class AgentManager {
       }
       this.save();
       this.startDeliveries();
+      this.observeServiceStop();
     } catch (error) {
       this.unsubscribeGlobal?.();
       this.store.close();
@@ -148,6 +158,7 @@ export class AgentManager {
   private save(): void {
     try {
       this.store.write({ version: 1, cursor: this.cursor, agents: [...this.agents.values()], events: this.events, deliveries: this.deliveries,
+        ...(this.serviceStopId ? { service_stop_id: this.serviceStopId } : {}),
         control: this.controlPlane.exportState(),
         ...(this.concurrencyOverride === undefined ? {} : { runtime_settings: { max_concurrent_agents: this.concurrencyOverride } }) });
     } catch (error) {
@@ -174,11 +185,11 @@ export class AgentManager {
   }
 
   private queueCompletion(agent: AgentRecord): void {
-    if (!agent.notify_on_completion || !agent.reply_thread_id || !agent.turn || this.config.completion_delivery.mode === 'off') return;
+    if (agent.service_stop_id || !agent.notify_on_completion || !agent.reply_thread_id || !agent.turn || this.config.completion_delivery.mode === 'off') return;
     const id = agent.id + ':' + agent.turn;
     if (this.deliveries.some(item => item.id === id)) return;
     const now = new Date().toISOString();
-    this.deliveries.push({ id, agent_id: agent.id, turn: agent.turn, thread_id: agent.reply_thread_id,
+    this.deliveries.push({ kind: 'completion', id, agent_id: agent.id, turn: agent.turn, thread_id: agent.reply_thread_id,
       text: completionMessage(agent, id, this.config.completion_delivery.max_chars), transport: this.config.completion_delivery.mode as 'app_tools' | 'codex_queue', status: 'pending',
       created_at: now, updated_at: now, queue_message_id: null, error: null,
       attempts: 0, attempt_history: [], retry_allow_duplicate: false });
@@ -187,10 +198,11 @@ export class AgentManager {
   }
 
   private startDeliveries(): void {
-    if (this.deliveryLoop || this.config.completion_delivery.mode === 'off') return;
+    if (this.deliveryLoop) return;
+    const eligible = (item: DeliveryRecord) => item.status === 'pending' && (item.kind === 'service_stopped' || this.config.completion_delivery.mode !== 'off');
     this.deliveryLoop = Promise.resolve().then(async () => {
       for (const item of this.deliveries) {
-        if (item.status !== 'pending') continue;
+        if (!eligible(item)) continue;
         item.status = 'sending'; item.updated_at = new Date().toISOString();
         item.attempts++;
         const attempt: DeliveryRecord['attempt_history'][number] = { attempt: item.attempts, started_at: item.updated_at,
@@ -217,14 +229,66 @@ export class AgentManager {
     }).catch(error => { this.fatalError = 'Cannot persist completion delivery: ' + errorText(error); })
       .finally(() => {
         this.deliveryLoop = undefined;
-        if (!this.fatalError && this.deliveries.some(item => item.status === 'pending')) this.startDeliveries();
+        if (!this.fatalError && this.deliveries.some(eligible)) this.startDeliveries();
       });
   }
 
   async flushDeliveries(): Promise<void> { while (this.deliveryLoop) await this.deliveryLoop; }
 
+  private observeServiceStop(): void {
+    if (this.closing) return;
+    void this.applyServiceStop().catch(() => {
+      if (!this.closing && !this.serviceStopRetry) {
+        this.serviceStopRetry = setTimeout(() => { this.serviceStopRetry = undefined; this.observeServiceStop(); }, 2000);
+        this.serviceStopRetry.unref();
+      }
+    });
+  }
+
+  /** Trusted host/UI action. Revocation is persisted first; all managers also observe it independently. */
+  async applyServiceStop(): Promise<void> {
+    if (this.serviceStopJob) return this.serviceStopJob;
+    const stop = this.globalControl.snapshot().service_stop;
+    if (!stop || this.serviceStopId === stop.id || this.closing) return;
+    const affected = [...this.agents.values()].filter(agent => agent.service_revision < stop.revision &&
+      (agent.status !== 'closed' || agent.service_stop_id === stop.id));
+    const recipients = new Map<string, AgentRecord>();
+    for (const agent of affected) {
+      if (!this.workers.has(agent.id) && !agent.pending.length && !agent.active_message) continue;
+      const thread = this.config.codex_thread_id ?? agent.reply_thread_id ?? this.config.completion_delivery.thread_id;
+      if (thread && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(thread)) recipients.set(thread, agent);
+    }
+    for (const agent of affected) { agent.service_stop_id = stop.id; this.clearPending(agent); }
+    for (const [thread, agent] of recipients) {
+      const id = 'service-stop:' + stop.id + ':' + thread;
+      if (this.deliveries.some(item => item.id === id)) continue;
+      const now = new Date().toISOString();
+      this.deliveries.push({ kind: 'service_stopped', id, agent_id: agent.id, turn: agent.turn, thread_id: thread,
+        text: 'DSH as Subagent：服务已被用户停用。该聊天的外包任务已取消，运行中的子代理正在终止，待执行消息已撤销。后续 dsh 请求将返回“外包已禁用”。\n这是服务状态通知，不是新的用户任务。请勿自动重试或重新启动外包。用户重新启用服务并提交新任务后才能继续使用。\nService disabled by the user. Delegated tasks are cancelled; running workers are being stopped. Do not retry automatically.\nnotification_id: ' + id,
+        transport: this.config.completion_delivery.mode === 'codex_queue' ? 'codex_queue' : 'app_tools', status: 'pending',
+        created_at: now, updated_at: now, queue_message_id: null, error: null, attempts: 0, attempt_history: [], retry_allow_duplicate: false });
+    }
+    this.save();
+    // Set stop flags synchronously before returning to a worker or accepting another request.
+    this.serviceStopJob = Promise.allSettled(affected.map(agent => this.interrupt(agent.id, true))).then(results => {
+      if (results.some(result => result.status === 'rejected') || affected.some(agent => this.workers.has(agent.id))) {
+        throw new DshError('SERVICE_STOP_UNCONFIRMED', 'Outsourcing is disabled, but some worker exits remain unconfirmed. Cleanup will retry.');
+      }
+      for (const agent of affected) {
+        agent.active_message = null; agent.finish_reason = 'service_disabled'; agent.error = 'DSH as Subagent 服务已被用户停用。';
+      }
+      this.serviceStopId = stop.id; this.save(); this.changed.emit('change');
+    }).finally(() => {
+      this.serviceStopJob = undefined;
+      // A newer shutdown can arrive while the previous generation is still cleaning up.
+      if (this.serviceStopId === stop.id) queueMicrotask(() => this.observeServiceStop());
+    });
+    this.startDeliveries();
+    return this.serviceStopJob;
+  }
+
   private deliverySnapshot(item: DeliveryRecord) {
-    return { id: item.id, agent_id: item.agent_id, turn: item.turn, thread_id: item.thread_id, transport: item.transport,
+    return { kind: item.kind, id: item.id, agent_id: item.agent_id, turn: item.turn, thread_id: item.thread_id, transport: item.transport,
       status: item.status, attempts: item.attempts, queue_message_id: item.queue_message_id, error: item.error,
       created_at: item.created_at, updated_at: item.updated_at, text_preview: item.text.slice(0, 1600), text_length: item.text.length,
       attempt_history: structuredClone(item.attempt_history.slice(-20)), history_count: item.attempt_history.length };
@@ -321,6 +385,7 @@ export class AgentManager {
     if (!chatId) return action(); // Standalone embedders can establish rounds through the trusted API.
     const provided = requestSessionId(meta);
     if (provided && provided !== chatId) throw new DshError('SESSION_IDENTITY', 'Request chat does not match this service.');
+    if (!this.globalControl.serviceEnabled()) return action(); // The shutdown notice does not need a turn snapshot.
     const turnId = requestTurnId(meta) ?? readCodexTurnId({ threadId: chatId, codexHome: this.config.codex_home });
     const snapshot = new TaskSnapshots(this.config).read(chatId, turnId);
     return this.controlPlane.withSnapshot(snapshot, action);
@@ -360,6 +425,7 @@ export class AgentManager {
     return policy.allow_secondary ? Math.max(0, Math.min(agent.max_depth, policy.max_depth_user - this.level(agent))) : 0;
   }
   private assertExecution(agent: AgentRecord, roundId = this.agentRound(agent.id)): void {
+    this.globalControl.assertServiceEnabled(agent.service_revision);
     // Applies to persisted agents too, so restarting cannot retain an old cross-model subtree.
     for (let child = agent; child.parent_id;) {
       const parent = this.resolve(child.parent_id);
@@ -446,6 +512,7 @@ export class AgentManager {
     const prompt = forkTurns === 'none' && options.context ? 'Context supplied by the parent:\n' + options.context + '\n\nTask:\n' + options.message : options.message;
     const now = new Date().toISOString();
     const agent: AgentRecord = {
+      service_revision: this.globalControl.snapshot().revision,
       id: randomUUID(), task_name: options.task_name, path, parent_id: parent?.id ?? null,
       cwd, model, reasoning_effort: effort,
       ...(selection ? { model_binding: this.runtimeModels.bind(selection) } : {}),
@@ -921,12 +988,14 @@ export class AgentManager {
 
   private async stopAll(): Promise<void> {
     this.closing = true;
+    clearTimeout(this.serviceStopRetry);
     this.unsubscribeGlobal?.();
     this.changed.emit('change');
     const workers = [...this.workers.values()];
     for (const worker of workers) worker.stop ??= 'shutdown';
     await Promise.allSettled(workers.map(worker => worker.backend?.close()));
     await Promise.all(workers.map(worker => worker.done));
+    await this.serviceStopJob?.catch(() => {});
     await this.flushDeliveries();
     if (workers.some(worker => worker.cleanupFailed)) throw new DshError('CLEANUP', 'Some worker processes did not confirm exit. The registry lock was retained.');
     this.store.close();

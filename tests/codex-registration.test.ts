@@ -10,7 +10,7 @@ function fixture(original = '') {
   writeFileSync(join(root,'codex-mcp.toml'),'[mcp_servers.dsh]\ncommand = "node"\nargs = ["dsh.js"]\ntool_timeout_sec = 75\n');
   writeFileSync(join(home,'config.toml'),original);
   const call = (action:string) => {
-    const result=spawnSync('python',['-I','-B',resolve('packaging/codex_registration.py'),action,'--root',root,'--codex-home',home],{encoding:'utf8',windowsHide:true});
+    const result=spawnSync('python',['-I','-B',resolve('packaging/codex_registration.py'),action,'--root',root,'--codex-home',home,'--no-ui-startup'],{encoding:'utf8',windowsHide:true});
     assert(!result.error);return {code:result.status,...JSON.parse(result.stdout)};
   };
   return {root,home,call,read:()=>readFileSync(join(home,'config.toml'),'utf8')};

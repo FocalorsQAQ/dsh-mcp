@@ -56,6 +56,9 @@ export async function startUiBridge(ui: DshControlApi, dataDir: string) {
         }
         if (req.method === 'GET' && req.url === '/v1/snapshot') { json(res, 200, envelope()); return; }
         if (req.method === 'GET' && req.url === '/v1/outsourcing') { json(res, 200, ui.getGlobalControl()); return; }
+        if (req.method === 'POST' && req.url === '/v1/service-stop') {
+          await ui.applyServiceStop(); json(res, 200, envelope()); return;
+        }
         if (req.method === 'PATCH' && req.url === '/v1/outsourcing') {
           const command = outsourcingCommandSchema.parse(await body(req));
           ui.setOutsourcingEnabled(command.enabled, command.expected_revision);

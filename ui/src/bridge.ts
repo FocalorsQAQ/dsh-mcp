@@ -2,7 +2,7 @@ import type { DashboardState } from '../../src/dashboard.ts';
 import type { ControlPolicy } from '../../src/control-contract.ts';
 import type { ApiRegistrySnapshot, ApiAdd, ApiUpdate, ApiRemove } from '../../src/credential-contract';
 import type { ModelDraft, ModelConfigSnapshot, ProbeReceipt } from '../../src/model-config-contract';
-export type DesktopState = DashboardState & { window: { compact: boolean; floating: boolean } };
+export type DesktopState = DashboardState & { window: { compact: boolean } };
 type Reply<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
 declare global {
   interface Window {
@@ -33,8 +33,7 @@ declare global {
       updateSettings(patch: Partial<ControlPolicy>, revision: number): Promise<Reply<DesktopState>>;
       openManagementWindow(window: 'api_keys' | 'models'): Promise<Reply<unknown>>;
       reconnect(): Promise<Reply<DesktopState>>;
-      windowAction(action: 'compact' | 'minimize' | 'restore' | 'close'): Promise<Reply<DesktopState>>;
-      dragOrb(action: 'start' | 'move' | 'end'): Promise<Reply<{ dragged: boolean }>>;
+      windowAction(action: 'compact' | 'restore' | 'close'): Promise<Reply<DesktopState>>;
       subscribe(listener: (state: DesktopState) => void): () => void;
     };
   }

@@ -67,10 +67,10 @@ export class UiClient {
       }
     }
   }
-  private async request<T>(path: string, method: string, body: unknown) {
+  private async request<T>(path: string, method: string, body: unknown, timeout = 5000) {
     const endpoint = this.endpoint;
     if (!endpoint || this.state.status !== 'connected') throw new DshError('UI_DISCONNECTED', '尚未连接 dsh 服务。');
-    const response = await fetch(endpoint.url + path, { method, redirect: 'error', signal: AbortSignal.timeout(5000),
+    const response = await fetch(endpoint.url + path, { method, redirect: 'error', signal: AbortSignal.timeout(timeout),
       headers: { Authorization: 'Bearer ' + endpoint.token, 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const value = await response.json() as T & { error?: { code: string; message: string } };
     if (!response.ok) throw new DshError(value.error?.code ?? 'UI_REQUEST', value.error?.message ?? 'Control request failed.');
@@ -83,6 +83,10 @@ export class UiClient {
   }
   async setOutsourcingEnabled(enabled: boolean, expectedRevision: number) {
     const result = await this.request<UiEnvelope>('/v1/outsourcing', 'PATCH', { enabled, expected_revision: expectedRevision });
+    this.accept(result.value, result.endpoint); return this.snapshot();
+  }
+  async applyServiceStop() {
+    const result = await this.request<UiEnvelope>('/v1/service-stop', 'POST', {}, 20000);
     this.accept(result.value, result.endpoint); return this.snapshot();
   }
   async openManagementWindow(window: 'api_keys' | 'models') {

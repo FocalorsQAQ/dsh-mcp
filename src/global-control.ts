@@ -6,7 +6,9 @@ import { z } from 'zod';
 import { DshError } from './types.ts';
 import { policySchema, policyPatchSchema, type ControlPolicy } from './control-contract.ts';
 
-const storedSchema = z.object({ version: z.literal(2), revision: z.number().int().nonnegative().safe(), settings: policySchema }).strict();
+const serviceStopSchema = z.object({ id: z.uuid(), revision: z.number().int().positive().safe(), at: z.iso.datetime(), active: z.boolean() }).strict();
+const storedSchema = z.object({ version: z.literal(2), revision: z.number().int().nonnegative().safe(), settings: policySchema,
+  service_stop: serviceStopSchema.nullable().default(null) }).strict();
 export const globalControlSchema = storedSchema.extend({ enabled: z.boolean() });
 export const outsourcingCommandSchema = z.object({ enabled: z.boolean(), expected_revision: z.number().int().nonnegative().safe() }).strict();
 export type GlobalControlState = z.infer<typeof globalControlSchema>;
@@ -39,7 +41,21 @@ export class OutsourcingSwitch {
   }
   get enabled(): boolean { const status = this.status(); return status.available && status.state.enabled; }
   assertEnabled(): void {
+    this.assertServiceEnabled();
     if (!this.snapshot().enabled) throw new DshError('OUTSOURCING_DISABLED', '外包已禁用');
+  }
+  assertServiceEnabled(settingsRevision?: number): void {
+    const stop = this.snapshot().service_stop;
+    if (stop && (stop.active || (settingsRevision !== undefined && settingsRevision < stop.revision))) {
+      throw new DshError('OUTSOURCING_DISABLED', '外包已禁用：DSH as Subagent 服务已被用户停用。本轮授权已撤销；请重新启用服务后发布新任务。');
+    }
+  }
+  serviceEnabled(settingsRevision?: number): boolean {
+    try { this.assertServiceEnabled(settingsRevision); return true; } catch { return false; }
+  }
+  stopService(): GlobalControlState {
+    const result = this.command({ operation: 'stop_service' });
+    this.refresh(); return result;
   }
   private command(input: Record<string, unknown>): GlobalControlState {
     const allowed = new Set(['PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'SYSTEMDRIVE', 'TEMP', 'TMP', 'USERPROFILE', 'LOCALAPPDATA']);

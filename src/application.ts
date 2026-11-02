@@ -11,6 +11,7 @@ export function createApplication(config: Config, backend: BackendFactory = crea
   const snapshot = () => ({ ...controls.snapshot(), runtime: manager.list() });
   const ui = {
     snapshot,
+    applyServiceStop: () => manager.applyServiceStop(),
     getGlobalControl: () => manager.globalControl.status(),
     setOutsourcingEnabled: (enabled: boolean, expectedRevision: number) => manager.globalControl.setEnabled(enabled, expectedRevision),
     updateDefaults: (patch: unknown, expectedRevision: number) => manager.globalControl.updateSettings(patch, expectedRevision),

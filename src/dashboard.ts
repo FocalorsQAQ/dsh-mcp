@@ -5,6 +5,7 @@ import { OutsourcingSwitch } from './global-control.ts';
 import { UiClient } from './ui-client.ts';
 import { listSessions, sessionDirectory } from './sessions.ts';
 import { readChatNames } from './chat-names.ts';
+import { DshError } from './types.ts';
 
 /** Shared settings plus a read-only view of all live services. No chat selection or model call required. */
 export class Dashboard {
@@ -44,6 +45,17 @@ export class Dashboard {
       workspace_name: basename(this.config.workspace_root), workspace_root: this.config.workspace_root };
   }
   updateSettings(patch: unknown, revision: number) { this.defaults.updateSettings(patch, revision); return this.snapshot(); }
+  async stopService() {
+    this.defaults.stopService(); this.refresh();
+    // The persistent gate also reaches disconnected/new hosts through their own watcher.
+    const results = await Promise.allSettled([...this.clients.values()].map(async ({ client }) => {
+      const connection = client.snapshot();
+      if (connection.status === 'connected') await client.applyServiceStop();
+      else if (connection.snapshot?.runtime.active_count) throw new DshError('SERVICE_STOP_UNCONFIRMED', 'An active service is disconnected.');
+    }));
+    if (results.some(result => result.status === 'rejected')) throw new DshError('SERVICE_STOP_UNCONFIRMED', 'Outsourcing is disabled; waiting to confirm all worker exits.');
+    return this.snapshot();
+  }
   close() { clearInterval(this.timer); this.offDefaults(); for (const row of this.clients.values()) { row.off(); row.client.close(); } this.clients.clear(); this.listeners.clear(); }
 }
 export type DashboardState = ReturnType<Dashboard['snapshot']>;

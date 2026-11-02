@@ -6,7 +6,7 @@
 
 安装注册在 Codex 用户配置中添加 `UserPromptSubmit` 命令钩子，执行 `packaging/prompt-hook.mjs --config <dsh.config.json>`。该钩子在模型处理用户任务前运行，保存开关、代理数量、二次外包限制、USD/CNY 预算及启用的模型和推理强度列表，并作为 developer context 提供给主模型。它不调用模型 API，不保存用户 prompt、聊天正文或密钥。
 
-**首次安装需用户在 Codex CLI 的 `/hooks` 中审查并信任该钩子。** Codex 会跳过新建或修改后尚未信任的定义；安装器只注册，不写信任记录，也不设置跳过审核的选项。若用户关闭了 hooks 功能，需要先重新启用。参见 [Codex 官方 Hooks 文档](https://learn.chatgpt.com/docs/hooks)。可用安装目录的 `Review task hook.cmd` 打开 CLI 完成审查。
+**首次安装需用户审查并信任该钩子。** 优先使用 Codex App 的审核弹窗，CLI 的 `/hooks` 是备用入口。Codex 会跳过新建或修改后尚未信任的定义；安装器只注册，不写信任记录，也不设置跳过审核的选项。若用户关闭了 hooks 功能，需要先重新启用。参见 [Codex 官方 Hooks 文档](https://learn.chatgpt.com/docs/hooks)。可用安装目录的 `Review task hook.cmd` 打开 CLI 完成审查。
 
 这里验证的是本地 Codex 执行流程；不承诺云端编排会执行本机命令钩子。没有有效快照时，dsh 拒绝执行外包，返回 `TASK_SNAPSHOT_REQUIRED`，不会在第一次工具调用时偷偷补拍快照。已开始的旧对话轮次需要重新提交任务。
 
@@ -30,12 +30,16 @@
 
 `snapshot()` 返回 `global_control`、`runtime.online_count` 和 `runtime.works`。每个 work 含 `id`、可读 `title`、在线代理数组（`name`、`path`、`model`、`reasoning_effort`）。包含二次外包代理；断开服务后不沿用陈旧数量。标题来自精确 ID 的 Codex 名称索引，不读取聊天正文。无名称时显示工作区名称。
 
-控制窗不再选择聊天，也不显示实时费用和 token 卡片。在线数量可展开 work 明细；悬浮球显示所有 work 的总在线数量。账本仍采集用量，可通过原控制 API 读取。
+控制窗不再选择聊天，也不显示实时费用和 token 卡片。在线数量可展开 work 明细；悬浮球和最小化按钮已移除。账本仍采集用量，可通过原控制 API 读取。
 
 独立嵌入者不提供 `codex_thread_id` 时可继续使用原 `beginRound` / `updateSettings` 接口；Codex 集成则必须使用上述提交快照流程。`UiClient` 保留读取单个服务和旧嵌入接口的兼容性，新 UI 应使用 Dashboard。
+
+用户在配置窗确认“关闭DSH as Subagent”是即时撤销授权，优先于不可变快照。全局停用保存修订号并终止各聊天代理；重新启用后，修订号早于此次停用的快照继续拒绝，新提交才会获得授权。旧快照、账本和文件结果不会被改写或清零。
 
 ## English
 
 Settings are always editable and apply to future submissions. The trusted local Codex `UserPromptSubmit` hook freezes one configuration per chat/turn before the model runs. Running tasks and their descendants retain their original budget and model selection. Repeated hooks cannot refresh the snapshot or reset spending. Missing snapshots fail closed.
+
+User-confirmed service shutdown is an immediate revocation, overriding existing snapshots. It stops workers and notifies affected calling chats once. Re-enabling allows new submissions only; revoked turns and old agent handles stay blocked.
 
 Review the installed hook with `/hooks` in the Codex CLI before submitting a new task. Registration does not trust it automatically. The dashboard aggregates online subagents across works, with names, models and reasoning efforts, and has no chat selector. Credentials remain outside snapshots; deleting a source still revokes access.

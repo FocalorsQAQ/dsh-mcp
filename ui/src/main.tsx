@@ -7,13 +7,12 @@ import { t, useLocale, type LocalizedNotice } from './i18n';
 import { LanguageSelector } from './language-selector';
 import { ApiManager } from './api-manager';
 import { ModelManager } from './model-manager';
-import { FloatingOrb } from './floating-orb';
 import './style.css';
 import './density.css';
 import './language.css';
 import './dashboard.css';
 
-const blank: DesktopState = { global_control: { available: false, state: null, error: 'loading' }, runtime: { online_count: 0, works: [] }, workspace_name: '', workspace_root: '', window: { compact: false, floating: false } };
+const blank: DesktopState = { global_control: { available: false, state: null, error: 'loading' }, runtime: { online_count: 0, works: [] }, workspace_name: '', workspace_root: '', window: { compact: false } };
 const defaults: ControlPolicy = { enabled: false, max_root_agents: 4, allow_secondary: false, max_depth_user: 1,
   max_children_user: 1, round_budget: null, task_budget: null, billing_currency: 'USD' };
 
@@ -88,7 +87,13 @@ function App() {
     } catch { setNotice({ key: 'error.GLOBAL_CONTROL_STORAGE', error: true }); }
     finally { busy.current = false; setSaving(false); }
   };
-  const action = async (name: 'compact' | 'minimize' | 'close') => { const result = await window.dsh.windowAction(name); if (result.ok) setState(result.value); };
+  const action = async (name: 'compact' | 'close') => {
+    try {
+      const result = await window.dsh.windowAction(name);
+      if (result.ok) setState(result.value);
+      else setNotice({ key: 'error.' + result.code, error: true });
+    } catch { setNotice({ key: 'error.SERVICE_STOP_UNCONFIRMED', error: true }); }
+  };
   const placeholder = async (name: 'api_keys' | 'models') => {
     const result = await window.dsh.openManagementWindow(name);
     if (!result.ok) setNotice({ key: 'error.' + result.code, error: true });
@@ -98,14 +103,13 @@ function App() {
       <div className="brand">{t('app.title')}</div>
       <div className="window-controls">
         <button aria-label={t(state.window.compact ? 'window.expand' : 'window.compact')} onClick={() => void action('compact')}><Icon name={state.window.compact ? 'expand' : 'collapse'} size={14} /></button>
-        <button aria-label={t('window.minimizeAria')} title={t('window.minimize')} onClick={() => void action('minimize')}><Icon name="minus" size={14} /></button>
-        <button className="close-button" aria-label={t('window.close')} onClick={() => void action('close')}><Icon name="close" size={14} /></button>
       </div>
     </header>
     <main>
       <section className={'hero ' + (settings.enabled ? 'enabled' : '')}>
         <div className="hero-line"><div className="hero-heading"><span className="hero-symbol"><Icon name="agents" size={23} /></span><div><h1>{t('dashboard.settings')}</h1><p>{t(settings.enabled ? 'dashboard.enabled' : 'dashboard.disabled')}</p></div></div><Toggle label={t('outsourcing.enable')} checked={settings.enabled} disabled={unavailable} onChange={enabled => void apply({ enabled })} /></div>
         <p className="global-switch-note">{t('dashboard.snapshotHint')}</p>
+        {ready && global.state.service_stop?.active && <p className="service-stopped-note">{t('service.stoppedHint')}</p>}
       </section>
       <details className="online-details" data-testid="online-details">
         <summary><Icon name="activity" size={15} /><strong>{t('dashboard.online', { count: state.runtime.online_count })}</strong><span>{t('dashboard.details')}</span></summary>
@@ -137,6 +141,7 @@ function App() {
 
       </div>
     </main>
+    {!state.window.compact && <div className="service-close-area"><button disabled={saving} onClick={() => void action('close')}>{t('service.close')}</button></div>}
     <footer><span className="project-name">{t('dashboard.future')}</span><LanguageSelector /><span className={'save-state ' + (saving ? 'saving' : '')}>{saving ? t('save.pending') : ready ? <><Icon name="check" size={12} />{t('save.synced')}</> : t('error.GLOBAL_CONTROL_STORAGE')}</span></footer>
     {notice && <div className="toast error" role="alert"><span>{t(notice.key, notice.parameters)}</span><button aria-label={t('notice.close')} onClick={() => setNotice(null)}><Icon name="close" size={12} /></button></div>}
   </div>;
@@ -144,6 +149,6 @@ function App() {
 
 function LocalizedRoot() {
   useLocale();
-  return location.hash === '#api-keys' ? <ApiManager /> : location.hash === '#models' ? <ModelManager /> : location.hash === '#orb' ? <FloatingOrb /> : <App />;
+  return location.hash === '#api-keys' ? <ApiManager /> : location.hash === '#models' ? <ModelManager /> : <App />;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><LocalizedRoot /></React.StrictMode>);

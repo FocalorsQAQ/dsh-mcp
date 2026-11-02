@@ -81,5 +81,5 @@ export function snapshotInstructions(snapshot: TaskSnapshot): string {
     max_depth_user: policy.max_depth_user, max_children_user: policy.max_children_user,
     round_budget: policy.round_budget, task_budget: policy.task_budget, billing_currency: policy.billing_currency, models }) + '\n' +
     (policy.enabled ? '本轮可使用 dsh。' : '外包已禁用。本轮不要调用 dsh 外包工具。') +
-    ' This immutable snapshot applies to this host turn and all of its external descendants. UI edits apply to later submissions only. Budgets are [USD,CNY], enforced by code and shared across this main-agent turn. Read dsh.get_status for remaining budget; do not infer permission from old tool descriptions. No model argument can replace the host-bound snapshot.';
+    ' This immutable snapshot applies to this host turn and all of its external descendants. UI edits apply to later submissions only. User shutdown of the DSH service immediately revokes even existing snapshots and stops all agents; re-enabling never restores an old turn. Budgets are [USD,CNY], enforced by code and shared across this main-agent turn. Read dsh.get_status for remaining budget; do not infer permission from old tool descriptions. No model argument can replace the host-bound snapshot.';
 }

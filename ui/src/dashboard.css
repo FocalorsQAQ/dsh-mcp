@@ -12,3 +12,7 @@
 .online-empty { padding: 0 14px 12px; color: #aaa; font-size: 12px; }
 .compact .online-details { margin-top: 0; }
 .compact .online-details[open] .work-group, .compact .online-details[open] .online-empty { display: none; }
+.service-close-area{flex-shrink:0;padding:10px 22px;border-top:1px solid var(--line)}
+.service-close-area button{width:100%;padding:9px 12px;border:1px solid #62443f;border-radius:8px;color:#e0aaa1;font-size:11px}
+.service-close-area button:hover:not(:disabled){background:#40312e}
+.service-stopped-note{margin-top:8px;color:#d8b29a}

@@ -8,13 +8,13 @@
 
 工具清单保持稳定，关闭快照下 `get_status` 提示“外包已禁用”，其余调用在服务端被拒绝。不会清除上下文或靠动态删除工具表示权限。工具的展示说明可能被 Codex 缓存，提交上下文和请求约束才是本轮依据。
 
-控制窗不再选择聊天。它随时编辑共享默认值，并订阅所有已有聊天服务汇总在线数量；展开后按 work 名称显示子代理、模型和推理强度，悬浮球使用同一总数。名称只从本地 `session_index.jsonl` 按精确 UUID 解析，不读取聊天正文。
+控制窗不再选择聊天。它随时编辑共享默认值，并订阅所有已有聊天服务汇总在线数量；展开后按 work 名称显示子代理、模型和推理强度。已移除悬浮球和最小化按钮。名称只从本地 `session_index.jsonl` 按精确 UUID 解析，不读取聊天正文。
 
 数据隔离不创建独立工作区：代理继续使用受配置限制的工作区，主模型协调并行文件修改。配置快照里的提交目录不会扩大 `workspace_root` 或绕过 `spawn_agent.cwd` 范围验证。
 
 ## 验证
 
-`test:multi-client` 使用真实 MCP、Harness SDK/CLI 与本机模拟模型测试隔离、快照、断线续跑和重连。`test:dashboard-ui` 测试无服务时修改预算、跨 work 明细、名称更新和悬浮球。`test:task-hook` 在独立 Codex 测试目录验证提交时机及上下文注入。均不调用付费模型。
+`test:multi-client` 使用真实 MCP、Harness SDK/CLI 与本机模拟模型测试隔离、快照、断线续跑和重连。`test:dashboard-ui` 测试无服务时修改预算、跨 work 明细、名称更新和紧凑模式。`test:startup-watcher` 验证不依赖 MCP 的桌面启动。`test:task-hook` 在独立 Codex 测试目录验证提交时机及上下文注入。均不调用付费模型。
 
 ## English
 

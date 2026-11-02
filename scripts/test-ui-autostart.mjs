@@ -26,6 +26,9 @@ async function inspect(action = 'inspect') {
     '-ConfigPath', configPath, '-Action', action], { windowsHide: true, timeout: 15000 });
   return JSON.parse(stdout);
 }
+async function closeUi() {
+  await exec(node, [join(runtime, 'scripts/start-ui.mjs'), '--config', configPath, '--data-dir', data, '--quit'], { windowsHide: true, timeout: 15000 });
+}
 async function until(predicate) {
   const deadline = Date.now() + 30000;
   let state;
@@ -74,7 +77,7 @@ try {
   assert.equal(state[0].minimized, true, 'Automatic reconnection must leave a minimized UI alone.');
   console.log('Verified: repeated auto-start retains the existing minimized window.');
   // Even a duplicate initialized notification must not reopen a window after the user closed it.
-  await inspect('close');
+  await closeUi();
   await until(state => state.length === 0);
   await client.notification({ method: 'notifications/initialized' });
   assert((await client.listTools()).tools.length > 0);
@@ -91,7 +94,7 @@ try {
   await inspect('minimize'); await until(state => state[0]?.minimized);
   await openAgain(false);
   state = await until(state => state.length === 1 && !state[0].minimized && state[0].visible);
-  await inspect('close'); await until(state => state.length === 0);
+  await closeUi(); await until(state => state.length === 0);
   await client.close();
   // An explicit opt-out prevents any Electron process, while MCP remains usable.
   writeFileSync(configPath, JSON.stringify({ ...config, ui_auto_start: false }));
@@ -109,4 +112,4 @@ try {
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } catch (error) { console.error(directory, diagnostics); throw error; }
-finally { await inspect('close').catch(() => {}); await client.close(); }
+finally { await closeUi().catch(() => {}); await client.close(); }

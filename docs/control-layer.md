@@ -6,7 +6,11 @@
 
 第三方 UI 使用 `dsh-mcp/dashboard` 的 `Dashboard`。`start()` 发现并订阅所有聊天运行状态，`snapshot()` 返回共享配置和聚合在线明细；`updateSettings(patch, expectedRevision)` 保存下一轮默认值，独立于 MCP 生命周期。冲突返回 `GLOBAL_CONTROL_CONFLICT`，调用方应重新读取并由用户决定是否重试。
 
+用户确认关闭服务后调用 `await dashboard.stopService()`。此操作先持久化停用，再请求所有已连接服务停止代理；各服务也独立监听共享状态，界面退出不会取消清理。未确认的清理返回 `SERVICE_STOP_UNCONFIRMED`，UI 应保留窗口并提示重试。可信的单服务适配层通过 `DshControlApi.applyServiceStop()` / `UiClient.applyServiceStop()`（鉴权 `POST /v1/service-stop`）应用已经保存的停用；该接口本身不能开启服务，也不是模型工具。
+
 仅需配置存储时使用 `dsh-mcp/global-control` 的 `OutsourcingSwitch`：`snapshot()`、`status()`、`updateSettings()`、`setEnabled()`、`subscribe()`。版本 2 的 `settings` 包含完整 `ControlPolicy`；`enabled` 是公开返回值的兼容别名，不单独保存。
+
+`OutsourcingSwitch.stopService()` 原子设置 `settings.enabled=false` 并写入 `service_stop`（唯一 `id`、递增配置 `revision`、时间 `at`、`active`）。重复停用幂等。显式设置 `enabled=true` 只清除 `active`，保留撤销修订号；此前快照和代理仍不可执行。模型工具与每次 API 预留都检查此状态，普通下一轮参数编辑仍不改变当前任务。无需修改或删除历史上下文。
 
 模型配置仍由 `ModelRegistry` 管理，密钥仍由 `CredentialRegistry` 加密保存。提交钩子同时捕获有效模型选择和声明顺序；后续勾选变化仅影响新任务。API 来源被撤销时会阻止旧任务使用该来源。
 

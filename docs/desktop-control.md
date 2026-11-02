@@ -1,6 +1,6 @@
 # dsh 悬浮控制窗
 
-初版使用 Electron 45、React 19、TypeScript 和 Vite 8。深色悬浮窗支持拖动、悬浮球、紧凑模式和窗口位置记忆。Windows 下不占任务栏，通过 Win32 `GWLP_HWNDPARENT` 归属于 Codex 主窗口，不使用全局置顶。API 密钥按钮已接入独立的配置管理窗口；模型按钮已接入 [模型配置窗口](model-management.md)。已保存的 API key 不回传或展示，详见 [API 配置管理](api-management.md)。
+初版使用 Electron 45、React 19、TypeScript 和 Vite 8。深色悬浮窗支持拖动、紧凑模式和窗口位置记忆；已移除悬浮球模式和最小化按钮。Windows 下不占任务栏，通过 Win32 `GWLP_HWNDPARENT` 归属于 Codex 主窗口，不使用全局置顶。API 密钥按钮已接入独立的配置管理窗口；模型按钮已接入 [模型配置窗口](model-management.md)。已保存的 API key 不回传或展示，详见 [API 配置管理](api-management.md)。
 
 窗口标题为 DeepSeek Harness as Subagent。控制窗仅展示汇总在线代理状态，费用和 token 仍在账本中采集。预算以 USD 与 CNY 两个独立金额编辑。
 
@@ -10,15 +10,17 @@
 
 启动时可通过 `DSH_UI_LOCALE=en-US` 或 `DSH_UI_LOCALE=zh-CN` 覆盖已保存的选择；未指定时默认采用已保存语言，首次使用默认中文。语言只改变桌面显示，不改变模型、预算、计费币种或 MCP 工具协议。`pnpm test:i18n-ui` 验证切换、持久化和英文布局，不调用付费模型。
 
-Win32 归属辅助进程只修改控制窗自身，识别桌面 Codex（含 OpenAI.Codex 包下的 ChatGPT.exe），找不到时保持普通非置顶隐藏任务栏窗口并定期重试。多个 Codex 窗口优先选择前台窗口，否则选择一个可见主窗口；绑定后保持稳定。Codex 最小化时所属窗口遵循 Windows 的归属行为。关闭 Codex 可能连同控制窗关闭，MCP 生命周期仍独立。控制窗被最小化或关闭后，可再次执行启动命令恢复。
+Win32 归属辅助进程只修改控制窗自身，识别桌面 Codex（含 OpenAI.Codex 包下的 ChatGPT.exe），找不到时保持普通非置顶隐藏任务栏窗口并定期重试。多个 Codex 窗口优先选择前台窗口，否则选择一个可见主窗口；绑定后保持稳定。Codex 最小化时所属窗口遵循 Windows 的归属行为。关闭 Codex 可能连同控制窗关闭，MCP 生命周期仍独立。控制窗关闭后，可再次执行启动命令打开。
 
 ## 启动
 
-从 v0.1.2 开始，Windows 上的 MCP 服务在客户端完成初始化时默认自动打开悬浮窗。安装后重启 Codex，加载 dsh 时即可显示；不需要额外设置 Windows 开机启动项。`--doctor`、`--help` 和单纯启动但尚未连接客户端的 stdio 进程不会弹窗。
+当前 Windows 集成注册一个用户级桌面监听器。它通过 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 在登录时无窗口启动，并每 500 毫秒检查当前桌面会话的 Codex 主窗口；检测到桌面进程的新实例后，立即启动控制窗，不必进入 work、建立 MCP 连接或发出模型请求。Electron 自身初始化仍需少量时间。普通 Codex CLI 和其他 ChatGPT 应用不会触发。
 
-同一个 `data_dir` 使用 Electron 单实例锁，重复自动启动会保留现有窗口和最小化状态，不抢焦点。首次自动打开也不抢焦点。手动启动仍会显示、恢复并聚焦已有窗口。关闭控制窗不会停止 MCP；同一个 MCP 进程不会反复把已关闭的窗口弹回来，重启 MCP 后可以再次自动打开。不同 `data_dir` 的窗口仍独立。
+监听器使用按安装位置和配置区分的 Windows 命名互斥锁。每个 Codex 进程实例只触发一次，并比较进程创建时间以处理 PID 复用。相同 `data_dir` 的 Electron 单实例锁防止窗口重复；自动启动不抢焦点。手动关闭后，监听器不会反复重开，下一次 Codex 桌面进程启动时再打开。手动启动命令可随时重新打开，但不会自动解除用户停用状态。
 
-可以在 MCP 使用的 `dsh.config.json` 中设置 `"ui_auto_start": false` 并重启 MCP，关闭自动打开。旧配置无需增加字段，Windows 默认开启；其他系统默认关闭。自动打开使用 MCP 实际生效的工作区、数据目录和配置文件；UI 启动异常不会导致 MCP 工具不可用。源码运行前需先执行 `pnpm ui:build`。
+安装器或 `Connect to Codex.cmd` 自动注册并启动监听器；卸载只删除本安装拥有且未被用户修改的启动项，并停止监听器。不会改写 Codex 快捷方式或程序文件。状态写入配置文件旁的 `ui-startup-status.json`，只包含进程身份、启动时间及错误代码，不读取聊天内容。`ui_auto_start: false` 会被监听器动态读取以关闭自动打开；该设置不关闭已打开窗口。源码运行前需先构建 UI。
+
+尚未注册桌面监听器的源码/手动安装仍保留 MCP 初始化时打开窗口的兼容路径。已注册的安装由监听器负责，MCP 重连不会重新打开用户关闭的窗口。隔离安装测试可传 `/UISTARTUP=0`，命令行注册可用 `--no-ui-startup` 跳过 Windows 启动项；这不会改变 MCP 或提交快照配置。
 
 也可以在项目目录手动运行：
 
@@ -42,15 +44,17 @@ node scripts/start-ui.mjs --config D:/path/to/dsh.config.json
 
 ## 随时配置与在线明细
 
+展开窗口后，底部显示“关闭DSH as Subagent”；标题栏和紧凑模式没有关闭按钮。点击后需要确认，默认选中取消。窗口系统的关闭操作也走同一确认流程。确认会先原子保存全局服务停用状态，再停止所有聊天的外包代理、撤销待执行消息，并按受影响的请求聊天各排队发送一条停用通知。完成的聊天不会被无关通知唤醒。后端保留 MCP 连接和工具清单，以 `OUTSOURCING_DISABLED` 拒绝请求；`get_status` 仍可读取停用原因。
+
+服务停用优先于提交快照，与仅修改下一轮配置的普通开关不同。每个服务既监听停用状态，也在工具调用及每次模型请求前检查；子代理也受同一限制。停止失败时保留占用并重试清理，控制窗不会把未确认退出显示为成功。重开窗口并打开“启用外包”后，只允许新提交的任务；旧轮次和旧代理句柄不会恢复。用量、已产生的费用和已完成的文件修改保留。
+
+停用通知独立于 `notify_on_completion`，使用原有精确聊天绑定和回传记录去重。App 工具通道可直接发布；显式使用 `codex_queue` 时仍是待发送队列。发送失败或结果不明会记录在本地回传账本，不把未知结果自动重发；停用和拒绝请求不依赖消息发送成功。安装维护用 `--quit` 只重启界面，不代表用户停用服务。
+
 控制窗直接编辑后续任务的共享默认设置，不依赖任何聊天或模型先调用工具。开关、顶层代理数量、二次外包开关/深度/数量和两种预算均可预先保存。API 和模型管理窗口照常使用。
 
-提交任务时通过已审查的 Codex `UserPromptSubmit` 钩子截取快照；之后编辑不会改变运行中的任务。安装完成后，首次使用须在 Codex CLI 的 `/hooks` 审查并信任钩子。完整边界见 [配置快照](task-snapshots.md)。
+提交任务时通过已审查的 Codex `UserPromptSubmit` 钩子截取快照；之后编辑不会改变运行中的任务。首次使用时优先在 Codex App 的钩子审核弹窗中审查并允许 dsh；CLI `/hooks` 是备用入口。完整边界见 [配置快照](task-snapshots.md)。
 
 窗口不再提供聊天选择。在线数量汇总所有已连接 work，点击展开 work 名称及其每个在线子代理的名称、模型和推理强度。名称从本地 Codex 索引读取并跟随重命名；无标题时回退为工作区名。没有在线代理时显示 0；服务断开后排除其陈旧数据。标题索引和代理信息仅在本地显示。
-
-## 悬浮球
-
-点击最小化变为 72 像素悬浮球，显示所有 work 的在线代理总数（包含二次外包）。可拖动；点击展开，位置和窗口尺寸保持。关闭 UI 不结束代理任务。Win32 owned window 和隐藏任务栏行为保持。
 
 ## 自定义界面
 
@@ -58,4 +62,4 @@ node scripts/start-ui.mjs --config D:/path/to/dsh.config.json
 
 ## English
 
-The floating panel edits defaults for future task submissions, even before any MCP chat service exists. The submission hook freezes each turn's configuration. The panel has no chat selector or spending/token widgets. Its expandable online count groups agents by work name and shows agent names, models and reasoning efforts. The floating orb displays the aggregate count. Chinese and English remain available across all management windows.
+The Windows companion opens the control panel when the Codex desktop window starts, before entering a work or connecting MCP. It runs hidden at user logon, triggers once per Codex process generation and respects manual panel closure. Uninstall removes only its owned startup entry. The floating orb and minimize button have been removed; compact mode remains. Settings, submission snapshots, aggregate online details and both languages remain available.

@@ -64,9 +64,15 @@ try {
   appendFileSync(join(home,'session_index.jsonl'),JSON.stringify({id:ids[0],thread_name:'已重命名的工作',updated_at:'2026-11-02T00:00:00Z'})+'\n');
   await page.getByRole('heading',{name:'已重命名的工作'}).waitFor();
   await page.screenshot({path:join(directory,'dashboard-chinese.png')});
-  const opened=desktop.waitForEvent('window');await page.getByRole('button',{name:'收起为悬浮球'}).click();const orb=await opened;
-  await orb.getByTestId('orb-concurrency').filter({hasText:/^3$/}).waitFor();
-  await orb.getByRole('button',{name:'展开控制窗口'}).click();
+  assert.equal(await page.getByRole('button',{name:/悬浮球|最小化/}).count(),0);
+  assert.equal(await page.evaluate(()=>typeof window.dsh.dragOrb),'undefined');
+  assert.equal(await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1);
+  assert.equal(await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMinimizable()),false);
+  const rejected = await page.evaluate(()=>window.dsh.windowAction('minimize'));
+  assert.equal(rejected.ok,false,'Removed minimize action must not create a hidden orb');
+  await page.getByRole('button',{name:'紧凑模式'}).click();
+  await until(async()=>await page.locator('.app-shell.compact').count()===1);
+  await page.getByRole('button',{name:'展开窗口'}).click();
   await page.getByRole('combobox',{name:'界面语言'}).selectOption('en-US');
   await page.getByRole('heading',{name:'Next task settings'}).waitFor();
   await page.screenshot({path:join(directory,'dashboard-english.png')});
@@ -76,6 +82,13 @@ try {
   await number('Top-level agent limit',5,()=>gate.snapshot().settings.max_root_agents===5);
   assert.equal(await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isAlwaysOnTop()),false);
   assert.deepEqual(errors,[]);
-  const report={ok:true,directory,paid_api_calls:0,checks:['settings editable before any chat or model', 'no chat selector or usage panel', 'all work names and root/child agents', 'frozen budgets and enable state', 'next submission new defaults', 'rename updates', 'orb aggregates all works', 'bilingual', 'settings editable after services stop']};
+  const report={ok:true,directory,paid_api_calls:0,checks:['settings editable before any chat or model', 'no chat selector or usage panel', 'all work names and root/child agents', 'frozen budgets and enable state', 'next submission new defaults', 'rename updates', 'no orb or minimize; compact mode preserved', 'bilingual', 'settings editable after services stop']};
   writeFileSync(join(directory,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+} catch(error) {
+  if(desktop) {
+    const page=await desktop.firstWindow();
+    await page.screenshot({path:join(directory,'failure.png')}).catch(()=>{});
+    console.error(JSON.stringify({directory,defaults:gate.snapshot(),ui:await page.evaluate(()=>window.dsh.getState()).catch(()=>null),inputs:await page.locator('input').evaluateAll(items=>items.map(item=>({label:item.getAttribute('aria-label'),value:item.value,disabled:item.disabled}))).catch(()=>null)}));
+  }
+  throw error;
 } finally { await desktop?.close();for(const row of instances){await row.client.close();await row.server.close();await row.bridge.close();await row.app.close();} }

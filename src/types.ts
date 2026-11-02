@@ -13,6 +13,8 @@ export const messageSchema = z.object({
 });
 export type QueuedMessage = z.infer<typeof messageSchema>;
 export const agentSchema = z.object({
+  service_revision: z.number().int().nonnegative().default(0),
+  service_stop_id: z.uuid().optional(),
   last_round_id: z.string().optional(),
   id: z.uuid(), task_name: z.string(), path: z.string(), parent_id: z.uuid().nullable(),
   cwd: z.string(), model: z.string(), reasoning_effort: z.string().optional(),
@@ -55,6 +57,7 @@ const deliveryAttemptSchema = z.object({
   duplicate_risk_accepted: z.boolean().default(false),
 });
 export const deliverySchema = z.object({
+  kind: z.enum(['completion', 'service_stopped']).default('completion'),
   id: z.string(), agent_id: z.uuid(), turn: z.number().int().nonnegative(), thread_id: z.uuid(),
   text: z.string(), transport: z.enum(['app_tools', 'codex_queue']).default('codex_queue'),
   status: deliveryStatusSchema,
@@ -66,6 +69,7 @@ export const deliverySchema = z.object({
 export type DeliveryRecord = z.infer<typeof deliverySchema>;
 export type DeliveryTransport = (item: DeliveryRecord) => Promise<{ queue_message_id?: string; published?: boolean }>;
 export const stateSchema = z.object({
+  service_stop_id: z.uuid().optional(),
   version: z.literal(1), cursor: z.number().int().nonnegative(),
   agents: z.array(agentSchema), events: z.array(eventSchema),
   deliveries: z.array(deliverySchema).default([]),

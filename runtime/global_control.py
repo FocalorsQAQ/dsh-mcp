@@ -4,6 +4,7 @@ from pathlib import Path
 import runpy
 import sys
 import uuid
+from datetime import datetime, timezone
 
 common = runpy.run_path(str(Path(__file__).with_name("state_lock.py")))
 LockError, guard, atomic_json = (common[name] for name in ("LockError", "guard", "atomic_json"))
@@ -39,8 +40,14 @@ def read(path, initial=None):
         if set(state) != {"version", "revision", "enabled"} or type(state["enabled"]) is not bool or initial is None:
             raise ValueError("Invalid legacy switch")
         return {"version": 2, "revision": state["revision"], "settings": validate_settings({**initial, "enabled": state["enabled"]})}
-    if set(state) != {"version", "revision", "settings"}:
+    if set(state) not in ({"version", "revision", "settings"}, {"version", "revision", "settings", "service_stop"}):
         raise ValueError("Invalid control state")
+    stop = state.get("service_stop")
+    if stop is not None:
+        if set(stop) != {"id", "revision", "at", "active"} or type(stop["active"]) is not bool or type(stop["revision"]) is not int or not 0 < stop["revision"] <= state["revision"]:
+            raise ValueError("Invalid service stop")
+        uuid.UUID(stop["id"])
+        datetime.fromisoformat(stop["at"].replace("Z", "+00:00"))
     validate_settings(state["settings"])
     return state
 
@@ -67,9 +74,19 @@ def run(command):
             if type(command["expected_revision"]) is not int or command["expected_revision"] != state["revision"]:
                 raise LockError("GLOBAL_CONTROL_CONFLICT", "The global switch changed; refresh before updating.")
             settings = validate_settings({**state["settings"], **command["patch"]})
-            if state["settings"] == settings:
+            resume_service = command["patch"].get("enabled") is True and (state.get("service_stop") or {}).get("active", False)
+            if state["settings"] == settings and not resume_service:
                 return state
             state = {**state, "revision": state["revision"] + 1, "settings": settings}
+            if resume_service:
+                state["service_stop"] = {**state["service_stop"], "active": False}
+        elif command["operation"] == "stop_service":
+            state = read(path)
+            if (state.get("service_stop") or {}).get("active"):
+                return state
+            revision = state["revision"] + 1
+            state = {**state, "revision": revision, "settings": {**state["settings"], "enabled": False},
+                     "service_stop": {"id": str(uuid.uuid4()), "revision": revision, "at": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"), "active": True}}
         else:
             raise ValueError("Invalid operation")
         atomic_json(path, state, str(uuid.uuid4()))

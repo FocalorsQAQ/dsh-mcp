@@ -17,6 +17,7 @@ const copy = (from, to) => { mkdirSync(dirname(to), { recursive: true }); cpSync
 }); };
 for (const path of ['dist', 'dist-ui', 'desktop', 'resources', 'billing', 'runtime', 'licenses', 'docs', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'package.json', 'config/worker.patch.yml', 'scripts/start-ui.mjs', 'packaging/initialize.mjs', 'packaging/launch-server.mjs', 'packaging/uninstall-links.mjs']) copy(join(root, path), join(app, path));
 copy(join(root, 'packaging/codex_registration.py'), join(app, 'packaging/codex_registration.py'));
+copy(join(root, 'packaging/ui_startup.py'), join(app, 'packaging/ui_startup.py'));
 copy(join(root, 'packaging/prompt-hook.mjs'), join(app, 'packaging/prompt-hook.mjs'));
 copy(join(root, 'packaging/review-hook.ps1'), join(app, 'packaging/review-hook.ps1'));
 copy(join(root, 'packaging/Review task hook.cmd'), join(app, 'Review task hook.cmd'));

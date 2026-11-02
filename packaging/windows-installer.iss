@@ -98,6 +98,7 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   Code: Integer;
   Arguments: String;
+  RegistrationArgs: String;
 begin
   if CurStep = ssPostInstall then begin
     Arguments := '"' + ExpandConstant('{app}\packaging\initialize.mjs') + '" --workspace "' + WorkspacePage.Values[0] + '" --data-dir "' + ExpandConstant('{param:DATADIR|{localappdata}\dsh-mcp\data}') + '"';
@@ -106,13 +107,15 @@ begin
       RaiseException('Unable to initialize the CLI core.');
     if Code <> 0 then RaiseException('CLI core initialization failed. See initialization-result.json in the installation folder and the Setup Log for details.');
     if WizardIsTaskSelected('codex') then begin
+      RegistrationArgs := '-I -B "' + ExpandConstant('{app}\packaging\codex_registration.py') + '" register --root "' + ExpandConstant('{app}') + '"';
+      if ExpandConstant('{param:UISTARTUP|1}') = '0' then RegistrationArgs := RegistrationArgs + ' --no-ui-startup';
       if not Exec(ExpandConstant('{app}\bin\python\python.exe'),
-        '-I -B "' + ExpandConstant('{app}\packaging\codex_registration.py') + '" register --root "' + ExpandConstant('{app}') + '"',
+        RegistrationArgs,
         ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then Code := 2;
       if Code <> 0 then
         SuppressibleMsgBox('The application is installed, but Codex registration needs attention. Existing Codex settings were preserved. See codex-registration-result.json in the installation folder, or use codex-mcp.toml to connect manually.', mbInformation, MB_OK, IDOK)
       else
-        WizardForm.FinishedLabel.Caption := 'Installation completed. Restart Codex, then open Review task hook.cmd and use /hooks to review and trust the dsh submission hook. Configure APIs, models and the next task budget in the control window before submitting a new task.';
+        WizardForm.FinishedLabel.Caption := 'Installation completed. The control window opens when the Codex desktop window starts, before entering a work. Restart Codex to load MCP changes and review the dsh submission hook in the app when prompted. Configure APIs, models and the next task budget before submitting a task.';
     end;
   end;
 end;

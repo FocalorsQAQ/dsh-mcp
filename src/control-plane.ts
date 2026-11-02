@@ -46,7 +46,9 @@ export class ControlPlane {
   get policy(): ControlPolicy { return this.policyFor(this.currentRound); }
   policyFor(roundId: string): ControlPolicy {
     const snapshot = this.round(roundId).snapshot;
-    return snapshot ? structuredClone(snapshot.settings) : { ...structuredClone(this.state.policy), ...(this.globalControl ? { enabled: this.globalControl.enabled } : {}) };
+    const policy = snapshot ? structuredClone(snapshot.settings) : { ...structuredClone(this.state.policy), ...(this.globalControl ? { enabled: this.globalControl.enabled } : {}) };
+    if (this.globalControl && !this.globalControl.serviceEnabled(snapshot?.settings_revision)) policy.enabled = false;
+    return policy;
   }
   taskSnapshot(roundId = this.currentRound): TaskSnapshot | undefined { return structuredClone(this.round(roundId).snapshot); }
   withRound<T>(roundId: string, action: () => T): T { this.round(roundId); return this.requestRound.run(roundId, action); }
@@ -98,6 +100,7 @@ export class ControlPlane {
     this.commit(); return result;
   }
   assertEnabled(roundId = this.currentRound): void {
+    this.globalControl?.assertServiceEnabled(this.taskSnapshot(roundId)?.settings_revision);
     if (this.taskSnapshot(roundId)) {
       if (!this.policyFor(roundId).enabled) throw new DshError('OUTSOURCING_DISABLED', '外包已禁用（本轮任务快照）');
     } else if (this.globalControl) this.globalControl.assertEnabled();

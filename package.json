@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "license": "MIT",
   "author": "FocalorsQAQ",
@@ -77,7 +77,7 @@
     "ui": "pnpm run build && pnpm run ui:build && node scripts/start-ui.mjs",
     "test:ui": "node scripts/test-ui.mjs",
     "test:ui-autostart": "node scripts/test-ui-autostart.mjs",
-    "test:orb-ui": "node scripts/test-orb-ui.mjs",
+    "test:startup-watcher": "node scripts/test-startup-watcher.mjs",
     "test:multi-client": "node scripts/test-multi-client.mjs",
     "test:session-ui": "node scripts/test-session-ui.mjs",
     "test:codex-host": "node scripts/test-codex-host.mjs",
@@ -88,6 +88,7 @@
     "release:stage": "node scripts/release/stage.mjs",
     "release:audit": "node scripts/release/audit.mjs",
     "test:dashboard-ui": "node scripts/test-dashboard-ui.mjs",
+    "test:service-close-ui": "node scripts/test-service-close-ui.mjs",
     "test:task-hook": "node scripts/test-task-hook.mjs"
   },
   "dependencies": {

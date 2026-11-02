@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.8](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.8)
+[下载 v0.1.9](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.9)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.8-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.9-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -23,13 +23,13 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 1. 打开开始菜单中的 **DeepSeek Harness as Subagent**。
 2. 在 API 管理中添加自己的凭据，再添加并启用模型。
 3. 安装时默认勾选 **Connect dsh to Codex automatically**，安装器会自动注册 `dsh`。
-   重启 Codex 后即可加载工具，同时自动打开悬浮控制窗；已有窗口会复用且不抢焦点。
+   同时注册当前用户的桌面启动监听器：Codex 主窗口出现时即打开配置窗，无需进入 work；已有窗口会复用且不抢焦点。MCP 配置更新仍需重启 Codex 加载。
    如果取消自动接入，可运行开始菜单中的 **Connect to Codex**，或手动使用 `codex-mcp.toml`。
 4. 可在控制窗底部切换简体中文 / English。
 
 这是全局注册的 MCP 服务，可在 Codex 的 MCP 设置中查看，不是插件市场安装项。每个聊天独立任务和预算，共用 API、模型和下一轮默认配置。窗口汇总所有 work 的在线子代理，无需选择聊天。
 
-0.1.8 使用提交事件快照。安装后重启 Codex，并运行安装目录的 `Review task hook.cmd`，在 Codex CLI 输入 `/hooks`，审查并信任 `dsh` 的 `UserPromptSubmit` 钩子。安装器不自动信任脚本。若 hook 功能被关闭，需要先启用。之后发布新任务即可在模型运行前固定预算、开关和模型；没有快照的旧轮次会被拒绝。详见 [任务配置快照](task-snapshots.md)。
+提交事件快照需要审查 `dsh` 的 `UserPromptSubmit` 钩子。优先使用 Codex App 的“审核钩子”弹窗，勾选 `Saving dsh task settings` 并允许所选项；也可用安装目录的 `Review task hook.cmd` 打开 CLI 审查。安装器不自动信任脚本。若 hook 功能被关闭，需要先启用。之后发布新任务即可在模型运行前固定预算、开关和模型；没有快照的旧轮次会被拒绝。详见 [任务配置快照](task-snapshots.md)。
 
 ## 手动安装已编译程序
 
@@ -37,8 +37,8 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.8-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.8-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.9-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.9-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -85,8 +85,9 @@ extract them to the same empty folder and run `Initialize.cmd`. Downloading
 only the application ZIP is insufficient: you must also download the
 DeepSeek Harness CLI core archive. Then open `Control UI.cmd`, configure your
 API keys and models. The installer registers dsh with Codex by default; restart
-Codex to load the tools and automatically open the floating control window.
-An existing window is reused without taking focus or restoring it from minimized state.
+Codex to load the tools. A per-user background companion opens the floating
+control window as soon as the Codex desktop window appears, before entering a work.
+An existing window is reused without taking focus. There is no floating orb or minimize button.
 Set `"ui_auto_start": false` in `dsh.config.json` to disable automatic opening.
 Manual ZIP users can run `Connect to Codex.cmd`.
 Use `Initialize.cmd --workspace "D:\YourProject"` to select a workspace.
@@ -109,7 +110,19 @@ Codex after upgrading. Old root state is retained separately and is not silently
 assigned to a chat. This is a globally registered MCP server, not a marketplace
 plugin. See [multiple chats](multi-chat.md).
 
-Version 0.1.8 captures settings at task submission using a local Codex UserPromptSubmit hook. Review and trust the hook with `/hooks` before submitting a new task. The installer registers it but never bypasses trust. Settings remain editable without a running chat; changes apply to future tasks only. The UI aggregates all online subagents and no longer selects a chat.
+Settings are captured at task submission using a local Codex UserPromptSubmit hook.
+Review and allow `Saving dsh task settings` in the Codex App hook review dialog;
+alternatively, run `Review task hook.cmd` and enter `/hooks` in the Codex CLI.
+The installer registers the hook but never bypasses trust. Settings remain editable
+without a running chat; changes apply to future tasks only. The UI aggregates all
+online subagents and no longer selects a chat.
+
+Version 0.1.9 adds **Close DSH as Subagent** at the bottom of the expanded window.
+After confirmation, it stops active agents across chats and queues one service-disabled
+notice for each affected chat. Subsequent requests are rejected, while `get_status`
+remains available. Reopening the window does not enable the service: explicitly
+enable it and submit a new task. Old task snapshots remain revoked. This is an
+immediate stop action; the regular enablement switch still configures future tasks.
 
 Version 0.1.3 fixes upgrades from earlier releases, including installations left
 in a mixed state after the v0.1.2 initialization error. Run the newer installer

@@ -6,6 +6,14 @@ from pathlib import Path
 import tempfile
 import tomllib
 import uuid
+import importlib.util
+
+
+def startup_module():
+    spec = importlib.util.spec_from_file_location('dsh_ui_startup', Path(__file__).with_name('ui_startup.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def parse(raw):
@@ -121,17 +129,21 @@ def unregister_hook(root):
     return 'removed'
 
 
-def register(root, home):
+def register(root, home, ui_startup=True):
     result = register_mcp(root, home)
     if result['status'] != 'conflict':
         result['hook'] = register_hook(root, home)
+        if ui_startup:
+            result['ui_startup'] = startup_module().register(root)
     return result
 
 
 def unregister(root):
+    startup = startup_module().unregister(root) if (root / 'ui-startup-registration.json').exists() else {'status': 'not_owned'}
     hook = unregister_hook(root)
     result = unregister_mcp(root)
     result['hook'] = hook
+    result['ui_startup'] = startup
     return result
 
 
@@ -140,17 +152,18 @@ def main():
     parser.add_argument('action', choices=['register', 'unregister'])
     parser.add_argument('--root', required=True)
     parser.add_argument('--codex-home')
+    parser.add_argument('--no-ui-startup', action='store_true')
     args = parser.parse_args()
     root = Path(args.root).resolve()
     home = Path(args.codex_home or os.environ.get('CODEX_HOME') or Path.home() / '.codex').resolve()
     try:
-        result = register(root, home) if args.action == 'register' else unregister(root)
+        result = register(root, home, not args.no_ui_startup) if args.action == 'register' else unregister(root)
     except Exception:
         # Never include configuration text or credentials in installer output.
         result = {'status': 'error', 'message': 'Codex registration failed; use codex-mcp.toml to configure manually.'}
     (root / 'codex-registration-result.json').write_text(json.dumps(result), encoding='utf-8')
     print(json.dumps(result))
-    return 2 if result['status'] in ('error', 'conflict') else 0
+    return 2 if result['status'] in ('error', 'conflict') or result.get('ui_startup', {}).get('status') in ('conflict', 'not_owned') and args.action == 'register' else 0
 
 
 if __name__ == '__main__':
