@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, screen } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { detachWindowOwner } from './window-lifecycle.mjs';
 
 export function createApiWindow({ root, registry, locale, translate, parent }) {
   let window;
@@ -28,7 +29,7 @@ export function createApiWindow({ root, registry, locale, translate, parent }) {
       const owner = parent();
       const area = screen.getDisplayMatching(owner.getBounds()).workArea;
       window = new BrowserWindow({ parent: owner, width: Math.min(760, area.width - 40), height: Math.min(730, area.height - 40),
-        minWidth: 600, minHeight: 500, frame: false, show: false, skipTaskbar: true,
+        minWidth: 600, minHeight: 500, frame: false, show: false, skipTaskbar: true, minimizable: false,
         title: translate('api.title'), backgroundColor: '#212121', autoHideMenuBar: true,
         webPreferences: { preload: join(root, 'desktop/preload.cjs'), additionalArguments: ['--dsh-locale=' + locale()],
           contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false } });
@@ -38,6 +39,7 @@ export function createApiWindow({ root, registry, locale, translate, parent }) {
       window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
       window.webContents.session.setPermissionCheckHandler(() => false);
       window.once('ready-to-show', () => window.show());
+      window.on('close', () => detachWindowOwner(window));
       window.on('closed', () => { window = undefined; });
       await window.loadFile(renderer, { hash: 'api-keys' });
     },

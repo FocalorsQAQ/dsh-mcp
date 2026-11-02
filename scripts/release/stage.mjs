@@ -92,8 +92,16 @@ for (const name of new Set([...packages.values()].map(record => record.name))) {
   if (target) links.push({ path: 'node_modules/' + name, target: target.path });
 }
 const inventory = [...packages.values()].sort((a,b) => a.name.localeCompare(b.name));
+const compatibilityPatch = 'patches/@deepseek-ai__dsh-sdk-client@0.2.2-alpha.2.patch';
+copy(join(root, compatibilityPatch), join(core, compatibilityPatch));
+// Fail the release build if installation skipped our pinned background-window fix.
+const sdkSource = resolvePackage('@deepseek-ai/dsh-sdk-client', root);
+if (!/spawn\(this\.runtime\.command, this\.runtime\.args, \{\s*windowsHide: true,/.test(readFileSync(join(sdkSource, 'lib/index.js'), 'utf8')))
+  throw new Error('SDK Windows console compatibility patch is missing.');
 const manifest = { application_version: config.version, core_version: config.core_version, source: config.core_repository,
-  upstream_tag: config.core_tag, distribution: 'Official npm packages redistributed with pinned dependencies; not an upstream binary release.', links };
+  upstream_tag: config.core_tag, distribution: 'Official npm packages with pinned dependencies and documented local compatibility patches; not an upstream binary release.',
+  compatibility_patches: [{ package: '@deepseek-ai/dsh-sdk-client', version: config.core_version, file: compatibilityPatch,
+    sha256: createHash('sha256').update(readFileSync(join(root, compatibilityPatch))).digest('hex'), purpose: 'Hide background CLI console windows on Windows.' }], links };
 writeFileSync(join(core, 'core-manifest.json'), JSON.stringify(manifest, null, 2));
 writeFileSync(join(core, 'THIRD_PARTY_PACKAGES.json'), JSON.stringify(inventory, null, 2));
 copy(join(root, 'THIRD_PARTY_NOTICES.md'), join(core, 'THIRD_PARTY_NOTICES.md'));

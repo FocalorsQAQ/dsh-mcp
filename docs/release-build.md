@@ -30,6 +30,8 @@ instead of archived as machine-specific junctions. The initializer validates and
 restores these links at the user's installation path. Bundled Node.js and Python
 are separate from the host system. `core-manifest.json` records upstream source
 and version; `THIRD_PARTY_PACKAGES.json` records every shipped npm package.
+The pinned pnpm SDK patch is copied into the core archive and hashed in the
+manifest. Staging rejects an SDK installation missing its `windowsHide` patch.
 
 Before publication, run `node scripts/test-release.mjs`. It compiles the same
 installer source with an isolated Windows application ID and Start menu group,
@@ -40,10 +42,15 @@ provider, the packaged Electron windows, and installation/uninstallation checks.
 No credentials, model configuration, chats, test artifacts or local `.env` files
 belong in either archive or source control.
 
-Test the current upgrade path using `node scripts/test-release.mjs --upgrade-from 0.1.9`.
+Test the current upgrade path using `node scripts/test-release.mjs --upgrade-from 0.1.10`.
 The isolated installer disables Windows startup registration with `/UISTARTUP=0`;
 the companion itself is tested separately with temporary configuration and processes.
 The packaged service-close test uses mock workers and delivery callbacks, never real chats.
+`test:worker-window` starts the actual SDK/CLI without a model request and checks
+that the child has no Windows console. `test:owned-windows` uses a separate test
+host, actual native confirmation dialogs and local mock model responses to check
+API/model/control shutdown with a normal, maximized and minimized owner. It does
+not change the real Codex window. Both checks run against the installed package.
 
 For historical recovery coverage, use `node scripts/test-release.mjs --upgrade-from 0.1.1
 --through-failed-012` (on one command line). Keep the original baseline release

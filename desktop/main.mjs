@@ -13,6 +13,7 @@ import { createModelWindow } from './model-window.mjs';
 import { CredentialRegistry } from '../dist/credentials.js';
 import { languages, startupLocale, translate } from './localization.mjs';
 import { outsourcingCommandSchema } from '../dist/global-control.js';
+import { detachWindowOwner, stopOwnerHelper } from './window-lifecycle.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({ args: process.argv.slice(2), options: {
@@ -48,6 +49,8 @@ let compact = false;
 let fullHeight = 840;
 let allowClose = false;
 let closeRequest;
+let closingWindow;
+let preparedToClose = false;
 const state = () => ({ ...dashboard.snapshot(), window: { compact } });
 const publish = () => { if (window && !window.isDestroyed() && !window.webContents.isLoadingMainFrame()) window.webContents.send('dsh:state', state()); };
 dashboard.subscribe(publish);
@@ -129,6 +132,24 @@ function restoreControl() {
   window.show();
   window.focus(); publish();
 }
+function closeControlWindow() {
+  if (closingWindow) return closingWindow;
+  const target = window;
+  if (!target || target.isDestroyed()) return Promise.resolve();
+  closingWindow = (async () => {
+    // Wait for termination before detaching, otherwise the helper can reattach
+    // the external owner between detachment and WM_CLOSE.
+    await stopOwnerHelper(ownerHelper);
+    ownerHelper = undefined;
+    if (target.isDestroyed()) return;
+    detachWindowOwner(target);
+    apiWindow.close();
+    modelWindow.close();
+    preparedToClose = true;
+    target.close();
+  })().finally(() => { closingWindow = undefined; });
+  return closingWindow;
+}
 function requestServiceClose() {
   if (closeRequest) return closeRequest;
   closeRequest = (async () => {
@@ -137,7 +158,7 @@ function requestServiceClose() {
       buttons: [t('service.confirmYes'), t('service.cancel')], defaultId: 1, cancelId: 1, noLink: true });
     if (response.response !== 0) return;
     await dashboard.stopService();
-    allowClose = true; window.close();
+    allowClose = true; await closeControlWindow();
   })().finally(() => { closeRequest = undefined; });
   return closeRequest;
 }
@@ -156,7 +177,7 @@ handler('dsh:window:action', async (action) => {
 if (!app.requestSingleInstanceLock({ autoStart, quit: values.quit === true }) || values.quit) app.quit();
 else {
   app.on('second-instance', (_event, argv, _directory, additionalData) => {
-    if (additionalData?.quit === true || argv.includes('--quit')) { allowClose = true; window?.close(); return; }
+    if (additionalData?.quit === true || argv.includes('--quit')) { app.quit(); return; }
     // Reconnecting MCP clients must not restore minimized windows or steal focus.
     if (additionalData?.autoStart === true || argv.includes('--auto-start')) return;
     if (window) { restoreControl(); if (argv.includes('--api-keys')) void apiWindow.open(); if (argv.includes('--models')) void modelWindow.open(); }
@@ -186,8 +207,11 @@ else {
           title: t('service.confirmTitle'), message: friendlyError(error?.code), buttons: [t('service.acknowledge')] }));
         return;
       }
-      apiWindow.close();
-      modelWindow.close();
+      if (!preparedToClose) {
+        event.preventDefault();
+        void closeControlWindow().catch(error => process.stderr.write('[dsh close] ' + error.message + '\n'));
+        return;
+      }
       const bounds = window.getBounds();
       try { savePreferences({ ...preferences, locale, bounds: { ...bounds, height: fullHeight } }); } catch { /* Window close must still work. */ }
     });
@@ -200,4 +224,11 @@ else {
 }
 app.on('window-all-closed', () => app.quit());
 // Programmatic app shutdown (--quit / installer / Electron host) is maintenance, not a user service stop.
-app.on('before-quit', () => { allowClose = true; dashboard.close(); });
+app.on('before-quit', event => {
+  allowClose = true; dashboard.close();
+  if (window && !window.isDestroyed() && !preparedToClose) {
+    event.preventDefault();
+    // window-all-closed completes quitting after the asynchronous teardown.
+    void closeControlWindow().catch(error => process.stderr.write('[dsh close] ' + error.message + '\n'));
+  }
+});

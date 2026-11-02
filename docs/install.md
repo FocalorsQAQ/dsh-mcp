@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.10](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.10)
+[下载 v0.1.11](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.11)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.10-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.11-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -13,6 +13,7 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 `@deepseek-ai/dsh`、SDK 和 LLM 包 `0.2.2-alpha.2`。官方该 GitHub tag 没有可直接
 下载的 CLI 二进制附件，所以本项目把官方 npm 包及依赖整理为独立的 Release
 附件重新分发；它不是 DeepSeek 官方制作的二进制安装包。
+本项目对 SDK 增加了隐藏后台 CLI 控制台的兼容补丁；补丁原文与哈希记录包含在核心包中。
 
 安装时下载的程序和核心包均来自 `FocalorsQAQ/dsh-mcp` 的 GitHub Releases，
 无需安装时访问 npm、nodejs.org 或 python.org。Node.js、Python 和 Electron
@@ -37,8 +38,8 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.10-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.10-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.11-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.11-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -91,6 +92,11 @@ An existing window is reused without taking focus. There is no floating orb or m
 Set `"ui_auto_start": false` in `dsh.config.json` to disable automatic opening.
 Manual ZIP users can run `Connect to Codex.cmd`.
 Use `Initialize.cmd --workspace "D:\YourProject"` to select a workspace.
+
+Version 0.1.11 hides SDK-launched background CLI consoles. Control, API and model
+windows detach their owner before closing; the control window also stops its
+owner helper first. This avoids destroying windows while still linked to Codex.
+The SDK compatibility patch is included in the core archive with a manifest hash.
 
 Version 0.1.10 lets the main agent register other local projects with `create_workspace`
 and select them using `spawn_agent.workspace_id`. The optional **Restrict to main-agent

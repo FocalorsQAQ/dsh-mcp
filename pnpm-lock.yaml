@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@deepseek-ai/dsh-sdk-client@0.2.2-alpha.2': c7952c4762502767f1e48e18129335c20efdb5d7c7dacb53910558a66377020c
+
 importers:
 
   .:
@@ -16,13 +19,16 @@ importers:
         version: 0.2.2-alpha.2(@deepseek-ai/cordis@4.0.6-alpha.1)
       '@deepseek-ai/dsh-sdk-client':
         specifier: 0.2.2-alpha.2
-        version: 0.2.2-alpha.2(243229fa857ec5cc78bf558306cbdf31)
+        version: 0.2.2-alpha.2(patch_hash=c7952c4762502767f1e48e18129335c20efdb5d7c7dacb53910558a66377020c)(243229fa857ec5cc78bf558306cbdf31)
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
         version: 1.32.2(zod@4.6.7)
       electron:
         specifier: ^45.1.0
         version: 45.1.0
+      koffi:
+        specifier: 3.1.1
+        version: 3.1.1
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -7075,7 +7081,7 @@ snapshots:
       - '@deepseek-ai/dsh-util-time'
       - '@deepseek-ai/dsh-working-directory'
 
-  '@deepseek-ai/dsh-sdk-client@0.2.2-alpha.2(243229fa857ec5cc78bf558306cbdf31)':
+  '@deepseek-ai/dsh-sdk-client@0.2.2-alpha.2(patch_hash=c7952c4762502767f1e48e18129335c20efdb5d7c7dacb53910558a66377020c)(243229fa857ec5cc78bf558306cbdf31)':
     dependencies:
       '@deepseek-ai/cordis': 4.0.6-alpha.1(@deepseek-ai/cordis-plugin-include@1.0.11-alpha.1)(@deepseek-ai/cordis-plugin-loader@1.0.7-alpha.1)
       '@deepseek-ai/dsh': 0.2.2-alpha.2(01142e7a85d83715a0cc733b282363dd)

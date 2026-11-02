@@ -29,7 +29,7 @@ const upgradeIndex = process.argv.indexOf('--upgrade-from');
 const upgradeFrom = upgradeIndex < 0 ? undefined : process.argv[upgradeIndex + 1];
 let previousConfig;
 if (upgradeIndex >= 0) {
-  assert.match(upgradeFrom ?? '', /^0\.1\.[013456789]$/);
+  assert.match(upgradeFrom ?? '', /^0\.1\.(?:[013456789]|10)$/);
   const baselineArgs = args.filter(arg => !arg.startsWith('/LOG='));
   await run(testInstaller(upgradeFrom, directory),
     [...baselineArgs, `/LOG=${join(directory, 'baseline-install.log')}`], { env: installEnvironment });
@@ -94,6 +94,8 @@ writeFileSync(join(directory,'session-ui.log'), await run(process.execPath,[reso
 if (process.env.DSH_TEST_CODEX_EXE) writeFileSync(join(directory,'codex-host.log'), await run(process.execPath,[resolve('scripts/test-task-hook.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 const smoke=await run(process.execPath,[resolve('scripts/smoke.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}});
 writeFileSync(join(directory,'smoke.log'),smoke);
+writeFileSync(join(directory,'worker-window.log'), await run(process.execPath,[resolve('scripts/test-worker-window.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
+writeFileSync(join(directory,'owned-windows.log'), await run(process.execPath,[resolve('scripts/test-owned-windows.mjs')],{env:{...env,DSH_RELEASE_ROOT:install}}));
 writeFileSync(join(data,'keep-on-uninstall.txt'),'user data must survive uninstall');
 await run(join(install,'unins000.exe'),['/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',`/LOG=${join(directory,'uninstall.log')}`]);
 assert(existsSync(join(data,'keep-on-uninstall.txt')));

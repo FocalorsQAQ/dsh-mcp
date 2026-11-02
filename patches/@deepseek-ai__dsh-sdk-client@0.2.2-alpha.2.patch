@@ -1,0 +1,12 @@
+diff --git a/lib/index.js b/lib/index.js
+index d3d8cff590aad6b72975b57536348f5a6a613fd8..d853efdc11d1b21a70c06cdc5488f49390e33d60 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -355,6 +355,7 @@ var HarnessClient = class {
+ 		if (this.child !== void 0) return;
+ 		this.userQuestionHandler = this.options.onUserQuestion;
+ 		const child = spawn(this.runtime.command, this.runtime.args, {
++			windowsHide: true,
+ 			cwd: this.runtime.cwd,
+ 			env: this.runtime.environment(),
+ 			stdio: [

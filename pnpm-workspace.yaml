@@ -10,3 +10,5 @@ allowBuilds:
   protobufjs: false
   node-addon-require-builtin: false
   msgpackr-extract: false
+patchedDependencies:
+  '@deepseek-ai/dsh-sdk-client@0.2.2-alpha.2': patches/@deepseek-ai__dsh-sdk-client@0.2.2-alpha.2.patch

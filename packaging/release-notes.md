@@ -1,29 +1,25 @@
-## v0.1.10 — 工作区管理与控制窗修复 / Workspaces and control window fixes
+## v0.1.11 — 后台 CLI 与窗口关闭修复 / Background CLI and window shutdown
 
-- 新增 `create_workspace`、`list_workspaces` 和 `spawn_agent.workspace_id`。主 agent 可接入已有本机项目或创建目录，不再受安装时默认 `workspace_root` 限制；注册记录按聊天保存。
-- 新增“仅限主 agent 工作区”权限开关，默认关闭。开启后，创建目录和执行任务都必须位于主 agent 本轮提交的工作区内；代码会检查真实路径、目录链接和恢复后的任务。外包子代理只能继承父代理的工作区，不能自行扩大范围。
-- 修复 Codex 退出时后台启动监听器随之消失的问题。监听器独立运行，MCP 连接时也会检查并恢复它；手动关闭控制窗后，同一次 Codex 运行期间保持关闭，重启 Codex 后自动打开。
-- 修复控制窗启动后只剩黑框或不可见的问题。Electron 图形进程使用正常窗口启动方式，仍保留 Codex owned window、不占任务栏和自动启动不抢焦点的行为。
-- 升级保留 API 凭据、模型、预算与用户数据。重新打开窗口不会自动启用已停用的服务；需打开“启用外包”并提交新任务，已撤销的旧任务不会恢复。
+- 隐藏 SDK 启动的 DeepSeek Harness CLI 后台控制台。控制 UI 仍以正常图形窗口启动，避免重新引入黑框问题；用户主动运行 `Harness CLI.cmd` 时仍可使用交互终端。
+- 控制窗、模型页和 API 页关闭前，会先解除自己的 Windows owner 和 Electron 父窗口关系。控制窗先等待绑定辅助进程退出，防止关闭过程中重新挂接 Codex；配置页禁止最小化。
+- 关闭流程只修改 DSH 窗口，不向 Codex 发送最小化、恢复或焦点操作。确认停用后的子代理停止、聊天通知与后续调用拒绝逻辑保持有效；维护退出不会停用服务。
+- SDK 兼容补丁通过 pnpm 固定，在 CLI 核心包中提供原文与 SHA-256，便于审查与复现。
 
 ### 安装与升级
 
-运行 `dsh-mcp-0.1.10-setup-win-x64.exe`，升级后重启 Codex。安装器从本 GitHub Release 下载程序和固定版本的 **DeepSeek Harness CLI 核心包**，并验证 SHA-256。本版仍为预发布，安装包暂未签名。
+运行 `dsh-mcp-0.1.11-setup-win-x64.exe`，升级后重启 Codex。安装器从本 GitHub Release 下载程序和固定版本的 **DeepSeek Harness CLI 核心包**，并验证 SHA-256。升级保留 API 凭据、模型、预算与用户数据。本版仍为预发布，安装包暂未签名。
 
-手动安装需下载**两个 ZIP**并解压至同一目录，然后运行 `Initialize.cmd` 和 `Connect to Codex.cmd`。仅下载程序 ZIP 无法运行代理。CLI 核心来自官方 `deepseek-ai/deepseek-harness` 对应的 npm 包，本项目负责整理分发，不是 DeepSeek 官方二进制安装包。
+手动安装需下载**两个 ZIP**并解压至同一目录，然后运行 `Initialize.cmd` 和 `Connect to Codex.cmd`。CLI 核心来自官方 `deepseek-ai/deepseek-harness` 对应的 npm 包，并包含上述本地兼容补丁；不是 DeepSeek 官方二进制安装包。项目源码采用 MIT，依赖保留各自许可。
 
-如果 Codex 提示审核钩子，请审查并允许 `Saving dsh task settings`；安装器不会代替用户信任钩子。项目源码采用 MIT，依赖保留各自许可。
-
-验证：165 项测试全部通过；实际安装包通过 v0.1.9 升级、窗口重开与启动监听器恢复、跨聊天停用、工作区权限、真实 Harness CLI 的本地模拟任务和卸载保留数据检查。没有调用付费模型或向真实聊天发送测试通知。
+验证范围：实际 SDK/CLI 无控制台启动与正常退出；真实原生确认框、刚操作过的模型/API 页和控制窗关闭；正常、最大化、最小化测试宿主的状态保持；本地模拟任务和安装升级检查。用户报告的 Codex 偶发最小化尚未稳定复现，本次针对关闭时仍保留窗口归属链的路径进行修补，不能把测试通过视为该偶发问题已完全复现并消除。测试不调用付费模型，也不向真实聊天发送通知。
 
 ## English
 
-- `create_workspace` and `list_workspaces` let the main agent register existing local projects or create directories, then select one through `spawn_agent.workspace_id`. Registrations persist per chat without changing the installation default.
-- The optional **Restrict to main-agent workspace** switch defaults to off. When enabled, registration and execution stay inside the host-bound directory captured at submission. Real-path checks reject link escapes and replaced roots. Children inherit their parent's workspace and cannot expand it.
-- The Windows startup companion now survives Codex termination and is checked and repaired when MCP connects. A manual close is respected for the current Codex process; restarting Codex opens the window again.
-- Fixed the blank or invisible control window caused by applying a hidden startup flag to Electron. The window remains owned by Codex, absent from the taskbar, and does not take focus during automatic startup.
-- User settings, encrypted credentials, models, budgets and data are retained on upgrade. Reopening the window does not enable a stopped service; explicitly enable it and submit a new task. Revoked turns remain blocked.
+- The SDK now starts the background Harness CLI with `windowsHide: true`. The Electron GUI keeps its normal startup behavior; launching `Harness CLI.cmd` manually remains interactive.
+- Control, model and API windows release their native owner and Electron parent before destruction. Control shutdown waits for the owner helper to exit first, preventing it from reattaching Codex during teardown. Configuration windows cannot be minimized.
+- Shutdown changes only DSH windows and sends no minimize, restore or focus operation to Codex. Confirmed service shutdown still stops agents, notifies affected chats and rejects subsequent requests. Maintenance exits do not disable the service.
+- The SDK change is a pinned pnpm compatibility patch, redistributed with its exact content and SHA-256 in the CLI core archive.
 
-Run the Windows x64 installer and restart Codex after upgrading. It downloads both the application and matching CLI core archives from this release and verifies SHA-256. This remains an unsigned prerelease. Manual installs require **both ZIP files**, extracted together, followed by `Initialize.cmd` and `Connect to Codex.cmd`. Review the `Saving dsh task settings` hook in Codex if prompted; installation does not bypass trust. Source is MIT; bundled dependencies retain their own licenses.
+Run the Windows x64 installer and restart Codex after upgrading. It downloads both archives from this release and verifies SHA-256. User settings and data are preserved. This remains an unsigned prerelease. Manual installation requires **both ZIP files**, extracted together, followed by `Initialize.cmd` and `Connect to Codex.cmd`. Source is MIT; dependencies retain their licenses.
 
-Validation: all 165 tests passed, along with the packaged upgrade from v0.1.9, window reopen and startup recovery, cross-chat shutdown, workspace permissions, actual Harness CLI tasks with local mock responses, and uninstall data preservation. No paid model requests or real-chat test notifications were sent.
+Validation covers the actual SDK/CLI console state and shutdown, real native confirmation dialogs, recently edited model/API pages, control shutdown and preservation of normal/maximized/minimized test host states, local mock tasks and installer upgrades. The intermittent Codex minimization report has not been consistently reproduced; this release repairs the ownership teardown path and regression tests do not establish that every occurrence has been eliminated. No paid model requests or real-chat test notifications are sent.

@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, dialog, screen } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ModelRegistry } from '../dist/model-config.js';
+import { detachWindowOwner } from './window-lifecycle.mjs';
 
 export function createModelWindow({ root, dataDir, credentials, locale, translate: t, parent }) {
   let window, verifying = false;
@@ -41,7 +42,7 @@ export function createModelWindow({ root, dataDir, credentials, locale, translat
       if (window && !window.isDestroyed()) { window.show(); window.focus(); return; }
       const owner = parent(), area = screen.getDisplayMatching(owner.getBounds()).workArea;
       window = new BrowserWindow({ parent: owner, width: Math.min(920, area.width - 40), height: Math.min(750, area.height - 40),
-        minWidth: 720, minHeight: 520, frame: false, skipTaskbar: true, show: false, title: t('model.title'), backgroundColor: '#212121',
+        minWidth: 720, minHeight: 520, frame: false, skipTaskbar: true, minimizable: false, show: false, title: t('model.title'), backgroundColor: '#212121',
         webPreferences: { preload: join(root, 'desktop/preload.cjs'), additionalArguments: ['--dsh-locale=' + locale()],
           contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false } });
       window.removeMenu(); window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -49,6 +50,7 @@ export function createModelWindow({ root, dataDir, credentials, locale, translat
       window.webContents.session.setPermissionRequestHandler((_c, _p, callback) => callback(false));
       window.webContents.session.setPermissionCheckHandler(() => false);
       window.once('ready-to-show', () => window.show());
+      window.on('close', () => detachWindowOwner(window));
       window.on('closed', () => { registry.close(); window = undefined; });
       await window.loadFile(renderer, { hash: 'models' });
     },

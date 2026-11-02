@@ -14,6 +14,11 @@ The upstream GitHub release is
 The separate checkout recorded in `upstream.lock.json` is a source reference,
 not the provenance of the published npm packages.
 
+dsh-mcp applies one local compatibility patch to the SDK client: its background
+CLI spawn sets `windowsHide: true`. The exact patch is distributed in `patches/`
+and recorded with its SHA-256 in `core-manifest.json`. The upstream version and
+license remain unchanged; this modification is maintained by dsh-mcp.
+
 Release archives preserve package license/notice files and include an inventory
 in `THIRD_PARTY_PACKAGES.json`. DeepSeek's MIT notice is included in
 `licenses/deepseek-harness-MIT.txt`. Windows application archives also contain

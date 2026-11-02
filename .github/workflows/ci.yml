@@ -25,6 +25,8 @@ jobs:
       - run: pnpm test
       - run: pnpm release:audit
       - run: pnpm smoke
+      - run: pnpm test:worker-window
+      - run: pnpm test:owned-windows
       - run: pnpm test:ui-autostart
       - run: pnpm test:startup-watcher
       - run: pnpm test:service-close-ui
