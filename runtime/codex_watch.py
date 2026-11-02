@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 
@@ -27,6 +28,24 @@ class LaunchTracker:
     def __init__(self):
         self.launched = set()
         self.retry_after = {}
+
+    def restore(self, saved, alive):
+        """A listener restart must not reopen a panel closed in this Codex generation."""
+        if not isinstance(saved, list):
+            return
+        for item in saved[:64]:
+            try:
+                pid, created = item['pid'], item['created']
+                if type(pid) is not int or pid <= 0 or not isinstance(created, str) or not created.isdecimal():
+                    continue
+                key = (pid, int(created))
+                if alive(key):
+                    self.launched.add(key)
+            except (KeyError, TypeError, ValueError):
+                continue
+
+    def snapshot(self):
+        return [{'pid': pid, 'created': str(created)} for pid, created in sorted(self.launched)]
 
     def tick(self, candidates, alive, enabled, launch, now):
         self.launched = {key for key in self.launched if alive(key)}
@@ -149,20 +168,56 @@ def write_status(root, value):
         temporary.unlink(missing_ok=True)
 
 
+def companion_ready(native, name):
+    # Named events disappear with their owning process; a stale JSON receipt is not health evidence.
+    event = native.kernel.OpenEventW(0x00100000, False, name + '-ready')
+    if not event:
+        return False
+    try:
+        return native.kernel.WaitForSingleObject(event, 0) == 0
+    finally:
+        native.kernel.CloseHandle(event)
+
+
+def ensure_running(root, config, native, name):
+    if companion_ready(native, name):
+        return {'status': 'running'}
+    python = root / 'bin/python/pythonw.exe'
+    if not python.is_file():
+        python = Path(sys.executable).with_name('pythonw.exe')
+    if not python.is_file():
+        raise OSError('Windowless Python runtime missing')
+    subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-File',
+                    str(root / 'runtime/start_codex_watch.ps1'), '-Root', str(root),
+                    '-Config', str(config), '-Python', str(python)],
+                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                   creationflags=subprocess.CREATE_NO_WINDOW, timeout=12, check=True)
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        if companion_ready(native, name):
+            return {'status': 'started'}
+        time.sleep(0.1)
+    raise TimeoutError('Desktop companion did not become ready')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', required=True)
     parser.add_argument('--config')
     parser.add_argument('--probe', action='store_true')
     parser.add_argument('--stop', action='store_true')
+    parser.add_argument('--ensure-running', action='store_true')
     args = parser.parse_args()
     root = Path(args.root).resolve()
     config = Path(args.config).resolve() if args.config else root / 'dsh.config.json'
     native = Windows()
     name = instance_name(root, config)
     if args.probe:
-        print(json.dumps({'enabled': auto_start_enabled(config), 'codex': [
+        print(json.dumps({'enabled': auto_start_enabled(config), 'companion_ready': companion_ready(native, name), 'codex': [
             {'pid': key[0], 'created': str(key[1]), 'executable': image} for key, image in native.candidates().items()]}))
+        return
+    if args.ensure_running:
+        print(json.dumps(ensure_running(root, config, native, name)))
         return
     if args.stop:
         event = native.kernel.OpenEventW(0x0002, False, name + '-stop')
@@ -192,16 +247,29 @@ def main():
     if not stop:
         native.kernel.CloseHandle(mutex)
         raise OSError('Cannot create desktop companion stop event')
+    ready = native.kernel.CreateEventW(None, True, False, name + '-ready')
+    if not ready:
+        native.kernel.CloseHandle(stop)
+        native.kernel.CloseHandle(mutex)
+        raise OSError('Cannot create desktop companion ready event')
     tracker = LaunchTracker()
+    try:
+        saved = json.loads((config.parent / 'ui-startup-status.json').read_text(encoding='utf-8'))
+        if saved.get('config') == str(config):
+            tracker.restore(saved.get('launched_codex'), native.alive)
+    except (OSError, ValueError, AttributeError):
+        pass
     status = {'pid': os.getpid(), 'started_at': time.time(), 'config': str(config), 'last_launch_at': None, 'last_error': None}
     previous = None
     try:
+        if not native.kernel.SetEvent(ready):
+            raise OSError('Cannot signal desktop companion readiness')
         while native.kernel.WaitForSingleObject(stop, 0) == 258:
             try:
                 enabled = auto_start_enabled(config)
                 candidates = native.candidates()
                 results = tracker.tick(candidates, native.alive, enabled, lambda: launch_ui(root, config), time.monotonic())
-                status.update(enabled=enabled, codex_pids=sorted(key[0] for key in candidates))
+                status.update(enabled=enabled, codex_pids=sorted(key[0] for key in candidates), launched_codex=tracker.snapshot())
                 for _, success in results:
                     status['last_error'] = None if success else 'UI_LAUNCH_FAILED'
                     if success:
@@ -210,14 +278,20 @@ def main():
                 status['last_error'] = 'WATCH_CONFIGURATION_OR_DESKTOP_UNAVAILABLE'
             serialized = json.dumps(status)
             if serialized != previous:
-                write_status(config.parent, status)
-                previous = serialized
+                try:
+                    write_status(config.parent, status)
+                    previous = serialized
+                except OSError:
+                    pass  # A temporarily locked status file must not terminate the listener.
             if native.kernel.WaitForSingleObject(stop, 500) != 258:
                 break
     finally:
         try:
             write_status(config.parent, {**status, 'stopped_at': time.time()})
+        except OSError:
+            pass
         finally:
+            native.kernel.CloseHandle(ready)
             native.kernel.CloseHandle(stop)
             native.kernel.CloseHandle(mutex)
 

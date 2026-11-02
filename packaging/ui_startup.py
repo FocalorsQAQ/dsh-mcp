@@ -59,8 +59,10 @@ def register(root, start=True, registry=None):
         subprocess.run([sys.executable, '-I', '-B', str(root / 'runtime/codex_watch.py'), '--root', str(root), '--stop'],
                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                        creationflags=subprocess.CREATE_NO_WINDOW, timeout=25, check=True)
-        subprocess.Popen(args, cwd=root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS)
+        # Start through the Windows desktop, independently of an installer or Codex job.
+        subprocess.run([sys.executable, '-I', '-B', str(root / 'runtime/codex_watch.py'), '--root', str(root), '--ensure-running'],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                       creationflags=subprocess.CREATE_NO_WINDOW, timeout=25, check=True)
     return {'status': 'already_registered' if before else 'registered'}
 
 

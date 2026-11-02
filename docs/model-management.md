@@ -53,7 +53,7 @@
 
 二次外包使用 dsh 的 MCP 控制桥创建独立 Harness 工作进程；`config/worker.patch.yml` 仍关闭 Harness 原生 `tool-subagent`、`tool-subagent-fork`、`tool-subagent-control`。这样所有后代仍由 dsh 统一执行深度、数量、并发、暂停和预算限制。
 
-服务器每秒检查工具说明是否需要刷新，并发送 MCP tools/list_changed；真正的创建、跟进和每次 API 请求都会重新检查启用状态、来源与强度，限制不依赖模型遵守说明。代理绑定创建时的模型配置 ID、API ID、协议与地址；来源切换后不能让旧代理静默使用新密钥。关闭外包后保留 18 个工具的定义，仅 `get_status` 可正常查询；其余调用返回“外包已禁用”，不清除历史上下文。
+服务器每秒检查工具说明是否需要刷新，并发送 MCP tools/list_changed；真正的创建、跟进和每次 API 请求都会重新检查启用状态、来源与强度，限制不依赖模型遵守说明。代理绑定创建时的模型配置 ID、API ID、协议与地址；来源切换后不能让旧代理静默使用新密钥。关闭外包后保留 20 个工具的定义，仅 `get_status` 可正常查询；其余调用返回“外包已禁用”，不清除历史上下文。
 
 DeepSeek 走官方 Harness 原生适配器；OpenAI Responses/Chat 走 Harness 内置 pi-ai 适配器及宿主计费网关。Windows 宿主通过无窗口 Electron 辅助进程使用相同 userData 的 OS 加密状态，以一次性随机命名管道传递解密结果；密钥不进入模型参数、工作进程、渲染页面或日志，控制 UI 无需保持打开。工作进程只拿到单代理网关令牌。
 

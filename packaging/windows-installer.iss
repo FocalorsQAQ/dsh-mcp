@@ -54,10 +54,10 @@ var
 
 procedure InitializeWizard;
 begin
-  WorkspacePage := CreateInputDirPage(wpSelectDir, 'Agent workspace',
-    'Choose the folder external agents can work in.',
+  WorkspacePage := CreateInputDirPage(wpSelectDir, 'Default agent workspace',
+    'Choose the default folder for external agents. Other projects can be registered later.',
     'The CLI core comes from DeepSeek Harness. This installer downloads the application and a pinned, redistributed official CLI runtime from GitHub Releases. Both are required. API keys are added after installation.', False, '');
-  WorkspacePage.Add('Workspace folder:');
+  WorkspacePage.Add('Default workspace folder:');
   WorkspacePage.Values[0] := ExpandConstant('{param:WORKSPACE|{userdocs}\dsh-workspace}');
   DownloadPage := CreateDownloadPage('Download from GitHub', 'Downloading and verifying the application and DeepSeek Harness CLI core...', nil);
   DownloadPage.ShowBaseNameInsteadOfUrl := True;

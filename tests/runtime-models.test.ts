@@ -47,7 +47,7 @@ test('MCP exposes current IDs and ordered efforts, refreshes descriptions, and b
   assert(!(await client.listTools()).tools.find(tool => tool.name === 'spawn_agent')!.description!.includes('gpt-5-mini'));
   assert((await client.callTool({ name: 'list_effort', arguments: { model_id: 'gpt-5-mini' } })).isError);
   manager.globalControl.setEnabled(false, manager.globalControl.snapshot().revision);
-  assert.equal((await client.listTools()).tools.length, 18);
+  assert.equal((await client.listTools()).tools.length, 20);
   assert.equal((await call('get_status'))!.enabled, false);
   assert((await client.callTool({ name: 'list_model', arguments: {} })).isError);
 });

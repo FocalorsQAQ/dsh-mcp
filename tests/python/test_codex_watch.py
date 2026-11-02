@@ -80,6 +80,19 @@ class DesktopStartupTests(unittest.TestCase):
         tracker.tick([identity], lambda _: True, True, launch, 30)
         self.assertEqual(len(calls), 2)
 
+    def test_listener_recovery_preserves_close_until_codex_restarts(self):
+        tracker, calls = watch.LaunchTracker(), []
+        first, restarted = (100, 1), (100, 2)
+        tracker.tick([first], lambda _: True, True, lambda: calls.append(1), 0)
+        saved = tracker.snapshot()
+        recovered = watch.LaunchTracker()
+        recovered.restore(saved + [None, {}, {'pid': True, 'created': '1'}, {'pid': 100, 'created': 'invalid'}], lambda key: key == first)
+        recovered.tick([first], lambda key: key == first, True, lambda: calls.append(1), 1)
+        self.assertEqual(len(calls), 1, 'Restarting the listener must not undo manual closure')
+        recovered.tick([restarted], lambda key: key == restarted, True, lambda: calls.append(1), 2)
+        self.assertEqual(len(calls), 2, 'A new Codex generation must reopen the control window')
+        self.assertEqual(recovered.snapshot(), [{'pid': 100, 'created': '2'}])
+
     def test_startup_registration_owns_only_its_value(self):
         output = ROOT / '.test-output/startup-unit'
         output.mkdir(parents=True, exist_ok=True)

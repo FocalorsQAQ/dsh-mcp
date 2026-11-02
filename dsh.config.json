@@ -15,6 +15,7 @@
     "enabled": true,
     "max_root_agents": 4,
     "allow_secondary": false,
+    "restrict_to_caller_workspace": false,
     "max_depth_user": 1,
     "max_children_user": 1,
     "round_budget": null,

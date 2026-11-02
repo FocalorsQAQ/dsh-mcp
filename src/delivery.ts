@@ -14,7 +14,7 @@ export function createDeliveryTransport(config: Config): DeliveryTransport {
     if (item.transport === 'app_tools') {
       const pipe = process.env.CODEX_APP_TOOLS_PIPE_PATH;
       if (!pipe) throw new DshError('DELIVERY_UNAVAILABLE', 'Desktop App tool pipe is not available.');
-      const caller = readCodexCaller({ threadId: item.thread_id, codexHome: config.codex_home, workspace: config.workspace_root });
+      const caller = readCodexCaller({ threadId: item.thread_id, codexHome: config.codex_home, workspace: item.caller_cwd ?? config.workspace_root });
       await publishToCallingChat({ pipe, ...caller, text: item.text, timeoutMs: config.completion_delivery.timeout_ms });
       return { published: true };
     }

@@ -81,14 +81,14 @@ async function ui(id) {
 const endpoint = id => JSON.parse(readFileSync(join(data, 'chats', id, 'mcp-endpoint.json'), 'utf8'));
 try {
   const [a1, a2, b, catalog] = await Promise.all([connect(A), connect(A), connect(B), connect()]);
-  for (const client of [a1, a2, b, catalog]) assert.equal((await client.listTools()).tools.length, 18);
+  for (const client of [a1, a2, b, catalog]) assert.equal((await client.listTools()).tools.length, 20);
   const pidA = endpoint(A).pid;
   assert.notEqual(pidA, endpoint(B).pid);
   const unauthorized = createConnection({ host: '127.0.0.1', port: endpoint(A).port });
   unauthorized.on('error', () => {}); await once(unauthorized, 'connect');
   const rejected = new Promise(resolve => unauthorized.once('close', resolve));
   unauthorized.write(JSON.stringify({ token: '0'.repeat(64), session_id: A }) + '\n'); await rejected;
-  assert.equal((await a1.listTools()).tools.length, 18, 'Rejected authentication must leave existing clients usable.');
+  assert.equal((await a1.listTools()).tools.length, 20, 'Rejected authentication must leave existing clients usable.');
   const readOnly = await catalog.callTool({ name: 'spawn_agent', arguments: { task_name: 'forbidden', message: 'must never run' } });
   assert.equal(readOnly.isError, true); assert.match(readOnly.content[0].text, /SESSION_REQUIRED/);
   assert.equal((await catalog.callTool({ name: 'list_agents', arguments: {} })).isError, true);
@@ -115,7 +115,7 @@ try {
   const denied=await catalog.callTool({name:'spawn_agent',arguments:{task_name:'disabled',message:'Must not run'},_meta:{threadId:B,turn_id:disabledTurn}});
   assert(denied.isError);assert.match(JSON.stringify(denied),/OUTSOURCING_DISABLED/);
   assert.equal((await call(a1,'get_status')).enabled,true,'Running task keeps original enabled snapshot');
-  for(const client of [a1,a2,b,catalog]) assert.equal((await client.listTools()).tools.length,18);
+  for(const client of [a1,a2,b,catalog]) assert.equal((await client.listTools()).tools.length,20);
   gate.setEnabled(true,gate.snapshot().revision);
   await a1.close();
   await call(a2, 'followup_task', { target: agentA.id, message: 'HOLD_ACROSS_DISCONNECT Reply once more, without tools.' });
@@ -150,7 +150,7 @@ try {
     assert.equal((await call(client, 'get_status')).enabled, false);
     const rejected = await client.callTool({ name: 'spawn_agent', arguments: { task_name: 'after_stop', message: 'must not run' }, _meta: { turn_id: turns[identities.get(client)] } });
     assert(rejected.isError); assert.match(JSON.stringify(rejected), /OUTSOURCING_DISABLED/);
-    assert.equal((await client.listTools()).tools.length, 18);
+    assert.equal((await client.listTools()).tools.length, 20);
   }
   await until(() => uiA.snapshot().status === 'connected' && uiA.snapshot().snapshot.runtime.active_count === 0);
   assert.equal(uiA.snapshot().snapshot.runtime.agents[0].status, 'closed');

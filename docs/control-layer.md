@@ -10,6 +10,8 @@
 
 仅需配置存储时使用 `dsh-mcp/global-control` 的 `OutsourcingSwitch`：`snapshot()`、`status()`、`updateSettings()`、`setEnabled()`、`subscribe()`。版本 2 的 `settings` 包含完整 `ControlPolicy`；`enabled` 是公开返回值的兼容别名，不单独保存。
 
+`restrict_to_caller_workspace` 控制工作区是否必须位于主 agent 提交目录内，默认 `false`。UI 用 `updateSettings({restrict_to_caller_workspace: true}, revision)` 修改下一轮默认值；`get_status.control` 和提交提示提供该开关与 `caller_workspace`。旧配置补默认值，不重置预算。`create_workspace` / `list_workspaces` 为主模型接口，不能修改用户权限；详见 [工作区管理](workspaces.md)。
+
 `OutsourcingSwitch.stopService()` 原子设置 `settings.enabled=false` 并写入 `service_stop`（唯一 `id`、递增配置 `revision`、时间 `at`、`active`）。重复停用幂等。显式设置 `enabled=true` 只清除 `active`，保留撤销修订号；此前快照和代理仍不可执行。模型工具与每次 API 预留都检查此状态，普通下一轮参数编辑仍不改变当前任务。无需修改或删除历史上下文。
 
 模型配置仍由 `ModelRegistry` 管理，密钥仍由 `CredentialRegistry` 加密保存。提交钩子同时捕获有效模型选择和声明顺序；后续勾选变化仅影响新任务。API 来源被撤销时会阻止旧任务使用该来源。

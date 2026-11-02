@@ -12,7 +12,10 @@ export const messageSchema = z.object({
   round_id: z.string().nullable().default(null),
 });
 export type QueuedMessage = z.infer<typeof messageSchema>;
+export const workspaceSchema = z.object({ id: z.uuid(), name: z.string().min(1).max(120), path: z.string().min(1), created_at: z.iso.datetime() }).strict();
+export type WorkspaceRecord = z.infer<typeof workspaceSchema>;
 export const agentSchema = z.object({
+  workspace_id: z.uuid().optional(),
   service_revision: z.number().int().nonnegative().default(0),
   service_stop_id: z.uuid().optional(),
   last_round_id: z.string().optional(),
@@ -57,6 +60,7 @@ const deliveryAttemptSchema = z.object({
   duplicate_risk_accepted: z.boolean().default(false),
 });
 export const deliverySchema = z.object({
+  caller_cwd: z.string().optional(),
   kind: z.enum(['completion', 'service_stopped']).default('completion'),
   id: z.string(), agent_id: z.uuid(), turn: z.number().int().nonnegative(), thread_id: z.uuid(),
   text: z.string(), transport: z.enum(['app_tools', 'codex_queue']).default('codex_queue'),
@@ -69,6 +73,7 @@ export const deliverySchema = z.object({
 export type DeliveryRecord = z.infer<typeof deliverySchema>;
 export type DeliveryTransport = (item: DeliveryRecord) => Promise<{ queue_message_id?: string; published?: boolean }>;
 export const stateSchema = z.object({
+  workspaces: z.array(workspaceSchema).max(256).default([]),
   service_stop_id: z.uuid().optional(),
   version: z.literal(1), cursor: z.number().int().nonnegative(),
   agents: z.array(agentSchema), events: z.array(eventSchema),

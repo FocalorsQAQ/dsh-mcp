@@ -13,7 +13,7 @@ import './language.css';
 import './dashboard.css';
 
 const blank: DesktopState = { global_control: { available: false, state: null, error: 'loading' }, runtime: { online_count: 0, works: [] }, workspace_name: '', workspace_root: '', window: { compact: false } };
-const defaults: ControlPolicy = { enabled: false, max_root_agents: 4, allow_secondary: false, max_depth_user: 1,
+const defaults: ControlPolicy = { enabled: false, max_root_agents: 4, allow_secondary: false, restrict_to_caller_workspace: false, max_depth_user: 1,
   max_children_user: 1, round_budget: null, task_budget: null, billing_currency: 'USD' };
 
 function Toggle({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
@@ -122,6 +122,8 @@ function App() {
         <section className="control-section">
           <div className="section-heading"><span><Icon name="agents" size={15} />{t("agents.title")}</span><span className="quiet">{t("agents.userLimit")}</span></div>
           <div className="setting-row"><div><label>{t("agents.roots")}</label><p>{t("agents.rootsHint")}</p></div><NumberField label={t("agents.rootCount")}  value={settings.max_root_agents} max={32} disabled={unavailable} onChange={max_root_agents => void apply({ max_root_agents })} /></div>
+          <div className="row-divider" />
+          <div className="setting-row"><div><label>{t('workspace.restrict')}</label><p>{t(settings.restrict_to_caller_workspace ? 'workspace.restrictedHint' : 'workspace.unrestrictedHint')}</p></div><Toggle label={t('workspace.restrict')} checked={settings.restrict_to_caller_workspace} disabled={unavailable} onChange={restrict_to_caller_workspace => void apply({ restrict_to_caller_workspace })} /></div>
           <div className="row-divider" />
           <div className="setting-row"><div><label>{t("delegation.allow")}</label><p>{t("delegation.consentHint")}</p></div><Toggle label={t("delegation.allow")}  checked={settings.allow_secondary} disabled={unavailable} onChange={allow_secondary => void apply({ allow_secondary })} /></div>
           <div className={'nested-limits ' + (!settings.allow_secondary ? 'muted-controls' : '')}>

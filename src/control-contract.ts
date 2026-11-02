@@ -8,6 +8,7 @@ export const policySchema = z.object({
   enabled: z.boolean().default(true),
   max_root_agents: z.number().int().min(0).max(32).default(4),
   allow_secondary: z.boolean().default(false),
+  restrict_to_caller_workspace: z.boolean().default(false),
   max_depth_user: z.number().int().min(0).max(32).default(1),
   max_children_user: z.number().int().min(0).max(1000).default(1),
   round_budget: moneySchema.nullable().default(null),
@@ -66,6 +67,8 @@ export interface AgentPolicyView {
   message: string;
   max_root_agents: number;
   allow_secondary: boolean;
+  restrict_to_caller_workspace: boolean;
+  caller_workspace: string | null;
   max_depth_user: number;
   max_children_user: number;
   round_id: string;

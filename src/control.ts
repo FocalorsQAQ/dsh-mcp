@@ -3,7 +3,7 @@ import { DshError } from './types.ts';
 import type { AgentPolicySource } from './control-contract.ts';
 
 export type AgentTools = Pick<AgentManager, 'spawn' | 'sendMessage' | 'followup' | 'list' | 'read' | 'wait' | 'interrupt' | 'batchControl' | 'pause' | 'resume' | 'manageQueue'> &
-  Partial<Pick<AgentManager, 'setConcurrency' | 'listDeliveries' | 'retryDelivery' | 'listModel' | 'listEffort'>> & { policySource?: AgentPolicySource };
+  Partial<Pick<AgentManager, 'setConcurrency' | 'listDeliveries' | 'retryDelivery' | 'listModel' | 'listEffort' | 'createWorkspace' | 'listWorkspaces'>> & { policySource?: AgentPolicySource };
 
 /** The caller's identity is bound by the host, never chosen by model arguments. */
 export function scopedTools(manager: AgentManager, callerId: string): AgentTools {

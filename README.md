@@ -1,6 +1,6 @@
 # DeepSeek Harness as Subagent · dsh MCP
 
-[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.9) · [安装说明 / Installation](docs/install.md)
+[MIT](LICENSE) · [Windows 下载](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.10) · [安装说明 / Installation](docs/install.md)
 
 **在线安装器从 GitHub 下载程序及 DeepSeek Harness CLI 核心运行包，并校验文件。手动安装必须同时下载程序 ZIP 与 CLI 核心 ZIP。** CLI 来自官方 dsh 项目，本项目将固定版本的官方 npm 包及其依赖重新分发为 GitHub Release 附件，详见[来源和安装方式](docs/install.md)。本项目为独立社区集成，非 DeepSeek 或 OpenAI 官方产品。
 
@@ -18,7 +18,7 @@
 
 ```text
 Codex / MCP 客户端
-  └─ dsh stdio 连接适配器（18 个工具，同一聊天复用一个后台服务）
+  └─ dsh stdio 连接适配器（20 个工具，同一聊天复用一个后台服务）
        └─ 代理管理器：任务、消息队列、并发限制、状态和结果
             └─ 官方 Harness SDK → 官方 dsh CLI 子进程
                  └─ DeepSeek 官方 API + Harness 工作区工具
@@ -29,7 +29,9 @@ Codex / MCP 客户端
 | 工具 | 行为 |
 | --- | --- |
 | `get_status` | 查询本轮提交快照及剩余预算；禁用时仍可用并返回“外包已禁用”，不创建代理或消耗模型额度。 |
-| `spawn_agent` | 立即返回代理 ID 和 `/root/task_name` 路径，后台启动任务。支持 `message`、`cwd`、`model`、`reasoning_effort`、`context`、`parent`、`fork_turns`、`max_depth` 和 `max_children`。 |
+| `create_workspace` | 仅主 agent：接入已有本机目录或创建新目录，返回持久化的工作区 ID；受本轮用户权限限制。不会复制或删除原项目。 |
+| `list_workspaces` | 仅主 agent：列出本聊天工作区 ID、路径及本轮是否允许使用，同时提供主 agent 目录和安装默认目录。 |
+| `spawn_agent` | 立即返回代理 ID 和 `/root/task_name` 路径，后台启动任务。支持 `workspace_id` 选择工作区，`cwd` 选择其内部目录；另支持 `message`、`model`、`reasoning_effort`、`context`、`parent`、`fork_turns`、`max_depth` 和 `max_children`。 |
 | `list_model` | 返回当前已启用的可选模型 ID。 |
 | `list_effort` | 输入 `model_id`，返回该模型按用户声明顺序保存的推理强度列表。 |
 | `send_message` | 向运行中的代理排队，在当前轮结束后处理；向空闲代理发消息不唤醒它。 |
@@ -58,7 +60,7 @@ Codex / MCP 客户端
 
 ## 安装、运行与接入 Codex
 
-普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.9)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
+普通 Windows 用户请使用 [GitHub Release 安装包](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.10)，其中已包含所需运行环境。以下是源码安装：需要 Node.js **24.9+**、pnpm 和 **Python 3.10+**；Python 计费模块只使用标准库。
 
 计费公式已独立为 `billing/rules.py`，价格表为 `billing/prices.json` 与 `billing/openai-prices.json`。价格表保存后自动重载；可用 `pnpm prices:edit deepseek` / `pnpm prices:edit openai` 打开编辑器，`pnpm prices:check` 校验。可以在配置的 `billing.rules` 中指定自己的 Python 文件；预算、账本和异常处理仍由服务端执行。详见 [Python 自定义计费](docs/billing.md)。
 
@@ -70,7 +72,9 @@ pnpm run doctor
 
 `pnpm install` 同时下载并安装必需的 DeepSeek Harness CLI 与匹配 SDK；不能只下载本项目源码后跳过依赖安装。
 
-编辑根目录 `dsh.config.json`：`workspace_root` 指定允许启动任务的项目根目录，`data_dir` 保存代理状态和会话。相对路径以配置文件所在目录为基准。默认工作区是本项目，默认最多并发 4 个代理，每轮最长 30 分钟。
+编辑根目录 `dsh.config.json`：`workspace_root` 指定未提供 `workspace_id` 时使用的默认目录，`data_dir` 保存代理状态和会话。配置文件中的相对路径以配置文件所在目录为基准。默认工作区是本项目，默认最多并发 4 个代理，每轮最长 30 分钟。
+
+主 agent 可以调用 `create_workspace({path: "D:/YourProject"})` 接入现有项目或创建目录，再把返回的 `workspace.id` 传给 `spawn_agent.workspace_id`。控制窗的“仅限主 agent 工作区”开关（`restrict_to_caller_workspace`，默认关闭）随任务快照固定：开启后只能使用主 agent 提交目录及子目录，关闭后可指定任意本机目录。新工作区不改变全局默认目录；二次外包继承父代理工作区，并限制在父代理目录内。详见 [工作区管理](docs/workspaces.md)。
 
 将 `.env.example` 复制为 `.env`，在本机填写 `DEEPSEEK_API_KEY`；也可以由启动 Codex 的环境提供该变量。密钥不应放进工具参数或聊天消息。`.env` 已被忽略；下面的启动命令会读取它，已存在的环境变量优先。
 

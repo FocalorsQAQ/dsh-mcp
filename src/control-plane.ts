@@ -198,6 +198,7 @@ export class ControlPlane {
     const available = this.available(roundId);
     return { enabled: policy.enabled, message: policy.enabled ? '外包可用；预算由服务端强制执行。' : '外包已禁用',
       max_root_agents: policy.max_root_agents, allow_secondary: policy.allow_secondary,
+      restrict_to_caller_workspace: policy.restrict_to_caller_workspace, caller_workspace: snapshot?.caller_cwd ?? null,
       max_depth_user: policy.max_depth_user, max_children_user: policy.max_children_user,
       round_id: roundId, budget: effective === null ? null : wire(effective), available_budget: available === null ? null : wire(available),
       selected_models: snapshot ? snapshot.models?.map(row => row.model_id) ?? [snapshot.legacy_model] : this.selection?.managed ? this.selection.selected().map(row => row.model_id) : null,

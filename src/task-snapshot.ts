@@ -8,6 +8,7 @@ import { OutsourcingSwitch } from './global-control.ts';
 import { RuntimeModels } from './runtime-models.ts';
 import { taskSnapshotSchema, type TaskSnapshot } from './control-contract.ts';
 import { DshError } from './types.ts';
+import { realDirectory } from './workspaces.ts';
 
 export class TaskSnapshots {
   constructor(private readonly config: Config) {}
@@ -53,7 +54,7 @@ export class TaskSnapshots {
     }
     if (!stable) throw new DshError('TASK_SNAPSHOT_STORAGE', 'Settings changed repeatedly while capturing this submission.');
     const models = registry?.entries.filter(row => row.effective_enabled).map(({ api_name, source_available, effective_enabled, verification_valid, ...entry }) => entry) ?? null;
-    const snapshot = taskSnapshotSchema.parse({ version: 1, chat_id: chatId, turn_id: turnId, caller_cwd: callerCwd,
+    const snapshot = taskSnapshotSchema.parse({ version: 1, chat_id: chatId, turn_id: turnId, caller_cwd: realDirectory(callerCwd),
       captured_at: new Date().toISOString(), settings_revision: defaults.revision, settings: defaults.settings,
       model_revision: registry?.revision ?? null, models, legacy_model: this.config.model, legacy_effort: this.config.reasoning_effort });
     this.chatDirectory(chatId);
@@ -78,8 +79,9 @@ export function snapshotInstructions(snapshot: TaskSnapshot): string {
     [{ model: snapshot.legacy_model, reasoning_efforts: snapshot.legacy_effort ? [snapshot.legacy_effort] : [] }];
   return '[dsh task configuration / 本轮外包配置]\n' + JSON.stringify({ turn_id: snapshot.turn_id, settings_revision: snapshot.settings_revision,
     enabled: policy.enabled, max_root_agents: policy.max_root_agents, allow_secondary: policy.allow_secondary,
+    restrict_to_caller_workspace: policy.restrict_to_caller_workspace, caller_workspace: snapshot.caller_cwd,
     max_depth_user: policy.max_depth_user, max_children_user: policy.max_children_user,
     round_budget: policy.round_budget, task_budget: policy.task_budget, billing_currency: policy.billing_currency, models }) + '\n' +
     (policy.enabled ? '本轮可使用 dsh。' : '外包已禁用。本轮不要调用 dsh 外包工具。') +
-    ' This immutable snapshot applies to this host turn and all of its external descendants. UI edits apply to later submissions only. User shutdown of the DSH service immediately revokes even existing snapshots and stops all agents; re-enabling never restores an old turn. Budgets are [USD,CNY], enforced by code and shared across this main-agent turn. Read dsh.get_status for remaining budget; do not infer permission from old tool descriptions. No model argument can replace the host-bound snapshot.';
+    ' Use create_workspace to register an existing local project or create a directory, then pass its workspace_id to spawn_agent. When restrict_to_caller_workspace is true, workspaces must stay within caller_workspace. Only the main agent can register workspaces; descendants inherit their parent workspace. This immutable snapshot applies to this host turn and all of its external descendants. UI edits apply to later submissions only. User shutdown of the DSH service immediately revokes even existing snapshots and stops all agents; re-enabling never restores an old turn. Budgets are [USD,CNY], enforced by code and shared across this main-agent turn. Read dsh.get_status for remaining budget; do not infer permission from old tool descriptions. No model argument can replace the host-bound snapshot.';
 }

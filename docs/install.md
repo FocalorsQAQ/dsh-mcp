@@ -1,10 +1,10 @@
 # 安装 / Installation
 
-[下载 v0.1.9](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.9)
+[下载 v0.1.10](https://github.com/FocalorsQAQ/dsh-mcp/releases/tag/v0.1.10)
 
 ## Windows 在线安装器
 
-下载 `dsh-mcp-0.1.9-setup-win-x64.exe` 并运行。支持 Windows 10
+下载 `dsh-mcp-0.1.10-setup-win-x64.exe` 并运行。支持 Windows 10
 2004 / Windows 11 x64，按当前用户安装，无需管理员权限。
 
 **DeepSeek Harness CLI 是执行代理的核心，必须安装。** 安装器会从 GitHub
@@ -18,7 +18,7 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 无需安装时访问 npm、nodejs.org 或 python.org。Node.js、Python 和 Electron
 运行环境已经包含在这两个包内。首次安装需要网络连接。
 
-安装过程中选择外包代理的工作区。安装完成后：
+安装过程中选择外包代理的默认工作区。主 agent 也可用 `create_workspace` 接入其他项目；若开启“仅限主 agent 工作区”，本轮所有工作区都必须在主 agent 目录内。详见[工作区管理](workspaces.md)。安装完成后：
 
 1. 打开开始菜单中的 **DeepSeek Harness as Subagent**。
 2. 在 API 管理中添加自己的凭据，再添加并启用模型。
@@ -37,8 +37,8 @@ Releases 拉取本程序和固定版本的 CLI 核心运行包，并校验 SHA-2
 
 从同一个 Release 下载并校验 `SHA256SUMS.txt`：
 
-- `dsh-mcp-0.1.9-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
-- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.9-win-x64.zip`：官方 CLI、SDK 和运行依赖。
+- `dsh-mcp-0.1.10-win-x64.zip`：已编译的 MCP、UI、Node.js、Python。
+- `deepseek-harness-cli-0.2.2-alpha.2-dsh-mcp-0.1.10-win-x64.zip`：官方 CLI、SDK 和运行依赖。
 
 将两个 ZIP 解压到同一个空文件夹，运行 `Initialize.cmd`，再打开
 `Control UI.cmd`。运行 `Connect to Codex.cmd` 可自动接入 Codex。初始化会恢复包依赖的目录链接，生成配置与 `codex-mcp.toml`；
@@ -91,6 +91,12 @@ An existing window is reused without taking focus. There is no floating orb or m
 Set `"ui_auto_start": false` in `dsh.config.json` to disable automatic opening.
 Manual ZIP users can run `Connect to Codex.cmd`.
 Use `Initialize.cmd --workspace "D:\YourProject"` to select a workspace.
+
+Version 0.1.10 lets the main agent register other local projects with `create_workspace`
+and select them using `spawn_agent.workspace_id`. The optional **Restrict to main-agent
+workspace** setting is enforced for each submitted turn. The startup companion now survives
+Codex restarts and preserves a manual close until the next Codex process starts. It also
+fixes the blank control window caused by hiding Electron at process launch.
 
 Registration preserves existing settings and creates a backup. A conflicting
 existing `dsh` entry is left unchanged; check `codex-registration-result.json`

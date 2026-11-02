@@ -11,10 +11,12 @@ LockError, guard, atomic_json = (common[name] for name in ("LockError", "guard",
 
 
 def validate_settings(settings):
-    fields = {"enabled", "max_root_agents", "allow_secondary", "max_depth_user", "max_children_user", "round_budget", "task_budget", "billing_currency"}
+    if isinstance(settings, dict):
+        settings = {"restrict_to_caller_workspace": False, **settings}
+    fields = {"enabled", "max_root_agents", "allow_secondary", "restrict_to_caller_workspace", "max_depth_user", "max_children_user", "round_budget", "task_budget", "billing_currency"}
     if not isinstance(settings, dict) or set(settings) != fields:
         raise ValueError("Invalid settings")
-    if type(settings["enabled"]) is not bool or type(settings["allow_secondary"]) is not bool:
+    if any(type(settings[name]) is not bool for name in ("enabled", "allow_secondary", "restrict_to_caller_workspace")):
         raise ValueError("Invalid switch")
     for name, limit in (("max_root_agents", 32), ("max_depth_user", 32), ("max_children_user", 1000)):
         if type(settings[name]) is not int or not 0 <= settings[name] <= limit:
@@ -48,7 +50,7 @@ def read(path, initial=None):
             raise ValueError("Invalid service stop")
         uuid.UUID(stop["id"])
         datetime.fromisoformat(stop["at"].replace("Z", "+00:00"))
-    validate_settings(state["settings"])
+    state["settings"] = validate_settings(state["settings"])
     return state
 
 

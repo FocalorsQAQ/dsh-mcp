@@ -29,7 +29,7 @@ const upgradeIndex = process.argv.indexOf('--upgrade-from');
 const upgradeFrom = upgradeIndex < 0 ? undefined : process.argv[upgradeIndex + 1];
 let previousConfig;
 if (upgradeIndex >= 0) {
-  assert.match(upgradeFrom ?? '', /^0\.1\.[01345678]$/);
+  assert.match(upgradeFrom ?? '', /^0\.1\.[013456789]$/);
   const baselineArgs = args.filter(arg => !arg.startsWith('/LOG='));
   await run(testInstaller(upgradeFrom, directory),
     [...baselineArgs, `/LOG=${join(directory, 'baseline-install.log')}`], { env: installEnvironment });
@@ -99,5 +99,5 @@ await run(join(install,'unins000.exe'),['/VERYSILENT','/SUPPRESSMSGBOXES','/NORE
 assert(existsSync(join(data,'keep-on-uninstall.txt')));
 assert(!existsSync(join(install,'bin/node/node.exe')));
 assert.equal(readFileSync(join(codexHome, 'config.toml'),'utf8'), originalCodex);
-const report={directory,online:process.argv.includes('--online'),upgrade_from:upgradeFrom,through_failed_012:process.argv.includes('--through-failed-012'),initialization,doctor,checks:['installer','embedded runtimes','CLI resolution','idempotent initialization','English UI','MCP fallback without duplicate windows','Codex desktop startup before MCP; no floating orb','confirmed service close across chats and persistent MCP rejection','simultaneous discovery/chat clients and persisted reconnect','independent chat controls with shared API/model configuration','real MCP/SDK/CLI mock tasks','uninstall preserves user data',...(upgradeFrom?['upgrade preserves configuration/data and verifies runtime links']:[])],paid_api_calls:0};
+const report={directory,online:process.argv.includes('--online'),upgrade_from:upgradeFrom,through_failed_012:process.argv.includes('--through-failed-012'),initialization,doctor,checks:['installer','embedded runtimes','CLI resolution','idempotent initialization','English UI','MCP fallback without duplicate windows','Codex desktop startup before MCP; no floating orb','dashboard settings and frozen workspace permissions','confirmed service close across chats and persistent MCP rejection','simultaneous discovery/chat clients and persisted reconnect','independent chat controls with shared API/model configuration','real MCP/SDK/CLI mock tasks','uninstall preserves user data',...(upgradeFrom?['upgrade preserves configuration/data and verifies runtime links']:[])],paid_api_calls:0};
 writeFileSync(join(directory,'report.json'),JSON.stringify(report,null,2)); console.log(JSON.stringify(report,null,2));

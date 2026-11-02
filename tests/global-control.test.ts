@@ -41,6 +41,18 @@ test('separate processes serialize competing global switch writes', async () => 
   assert.equal(results.filter(row => row.ok).length, 1);
   assert.equal(results.find(row => !row.ok)?.code, 'GLOBAL_CONTROL_CONFLICT');
 });
+test('workspace permission migrates old defaults without resetting settings or snapshots', () => {
+  const dir = directory(), gate = new OutsourcingSwitch(dir);
+  const file = join(dir, 'outsourcing.json'), old = JSON.parse(readFileSync(file, 'utf8'));
+  delete old.settings.restrict_to_caller_workspace; old.settings.round_budget = [2, 8];
+  writeFileSync(file, JSON.stringify(old));
+  const next = new OutsourcingSwitch(dir);
+  assert.equal(next.snapshot().settings.restrict_to_caller_workspace, false);
+  next.updateSettings({ restrict_to_caller_workspace: true }, next.snapshot().revision);
+  assert.equal(next.snapshot().settings.restrict_to_caller_workspace, true);
+  assert.deepEqual(next.snapshot().settings.round_budget, [2, 8]);
+  assert.throws(() => gate.updateSettings({ restrict_to_caller_workspace: 'false' }, next.snapshot().revision));
+});
 test('standalone legacy adapters preserve tool definitions and live disable notices', async t => {
   const dir = directory(), base = loadConfig(undefined, { workspace: dir, dataDir: join(dir, 'data') });
   const gate = new OutsourcingSwitch(base.data_dir, 'python', false);
@@ -53,7 +65,7 @@ test('standalone legacy adapters preserve tool definitions and live disable noti
     const client = new Client({ name: 'gate-test', version: '1' }); clients.push(client);
     client.setNotificationHandler(ToolListChangedNotificationSchema, () => { notifications++; });
     const [a, b] = InMemoryTransport.createLinkedPair(); await server.connect(a); await client.connect(b);
-    assert.equal((await client.listTools()).tools.length, 18);
+    assert.equal((await client.listTools()).tools.length, 20);
     assert.match(client.getInstructions()!, /UserPromptSubmit/);
     const status = await client.callTool({ name: 'get_status', arguments: {} });
     assert(!status.isError); assert.equal(status.structuredContent?.enabled, false);
@@ -69,7 +81,7 @@ test('standalone legacy adapters preserve tool definitions and live disable noti
   const rejected = await clients[0]!.callTool({ name: 'list_model', arguments: {} });
   assert(rejected.isError); assert.match(JSON.stringify(rejected.structuredContent), /OUTSOURCING_DISABLED.*外包已禁用/);
   for (const client of clients) {
-    assert.equal((await client.listTools()).tools.length, 18);
+    assert.equal((await client.listTools()).tools.length, 20);
     const status = await client.callTool({ name: 'get_status', arguments: {} });
     assert(!status.isError); assert.equal(status.structuredContent?.enabled, false);
   }

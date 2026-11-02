@@ -1,10 +1,31 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { ensureDesktopCompanion } from '../src/ui-launcher.ts';
+
+test('an owned startup receipt requires a live companion check; other configurations are left alone', { skip: process.platform !== 'win32' }, async () => {
+  const output = resolve('.test-output/ui-launch-failure'); mkdirSync(output, { recursive: true });
+  const root = mkdtempSync(join(output, 'health-'));
+  const config = join(root, 'config.json'), marker = join(root, 'ensure-called.json');
+  mkdirSync(join(root, 'runtime'));
+  writeFileSync(config, '{}');
+  writeFileSync(join(root, 'runtime/codex_watch.py'), `import json, pathlib, sys\npathlib.Path(__file__).resolve().parents[1].joinpath('ensure-called.json').write_text(json.dumps(sys.argv[1:]))\n`);
+  assert.equal(await ensureDesktopCompanion(config, root), false);
+  writeFileSync(join(root, 'ui-startup-registration.json'), JSON.stringify({ registered: true, config }));
+  writeFileSync(join(root, 'ui-startup-status.json'), JSON.stringify({ pid: 99999999 }));
+  assert.equal(await ensureDesktopCompanion(join(root, 'other-config.json'), root), false);
+  assert.equal(existsSync(marker), false);
+  assert.equal(await ensureDesktopCompanion(config, root), true);
+  const args = JSON.parse(readFileSync(marker, 'utf8'));
+  assert(args.includes('--ensure-running'));
+  assert.equal(args[args.indexOf('--config') + 1], config);
+  writeFileSync(join(root, 'runtime/codex_watch.py'), 'raise SystemExit(4)\n');
+  await assert.rejects(ensureDesktopCompanion(config, root), 'A failed repair must not report a healthy listener');
+});
 
 test('a failed control window launch does not break MCP initialization or tools', { timeout: 20000 }, async t => {
   const output = resolve('.test-output/ui-launch-failure'); mkdirSync(output, { recursive: true });

@@ -83,17 +83,18 @@ try {
   assert((await client.listTools()).tools.length > 0);
   assert.equal((await inspect()).length, 0);
   // A subsequent normal launch still works and can restore the existing window.
-  const environment = { ...env }; delete environment.ELECTRON_RUN_AS_NODE;
-  const manual = spawn(electron, [join(runtime, 'desktop/main.mjs'), '--config', configPath, '--data-dir', data],
-    { env: environment, windowsHide: false, stdio: ['ignore', 'ignore', 'pipe'] });
-  manual.stderr.on('data', chunk => { diagnostics += chunk; });
-  manual.on('exit', code => { diagnostics += '\nManual UI exit: ' + code; });
-  manual.on('error', error => { diagnostics += error.message; });
-  console.log('Checking manual launch, process ' + manual.pid);
+  // Exercise the shipped launcher. Launching Electron directly bypassed a SW_HIDE regression.
+  await exec(node, [join(runtime, 'scripts/start-ui.mjs'), '--config', configPath, '--data-dir', data],
+    { env, windowsHide: true, timeout: 15000 });
+  console.log('Checking manual launch through scripts/start-ui.mjs');
   await until(state => state.length === 1 && state[0].visible);
   await inspect('minimize'); await until(state => state[0]?.minimized);
   await openAgain(false);
   state = await until(state => state.length === 1 && !state[0].minimized && state[0].visible);
+  await closeUi(); await until(state => state.length === 0);
+  await exec(node, [join(runtime, 'scripts/start-ui.mjs'), '--config', configPath, '--data-dir', data],
+    { env, windowsHide: true, timeout: 15000 });
+  await until(state => state.length === 1 && state[0].visible);
   await closeUi(); await until(state => state.length === 0);
   await client.close();
   // An explicit opt-out prevents any Electron process, while MCP remains usable.
@@ -108,7 +109,7 @@ try {
   } finally { await disabled.close(); }
   const report = { ok: true, directory, runtime, paid_api_calls: 0,
     checks: ['real MCP auto-launch', 'no focus stealing', 'effective data-dir override', 'single instance',
-      'minimized state retained on auto-start', 'duplicate initialization ignored', 'manual reopen/restore', 'auto-start opt-out'] };
+      'minimized state retained on auto-start', 'duplicate initialization ignored', 'shipped manual launcher after close, twice', 'manual reopen/restore', 'auto-start opt-out'] };
   writeFileSync(join(directory, 'report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } catch (error) { console.error(directory, diagnostics); throw error; }

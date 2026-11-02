@@ -18,6 +18,7 @@ const directory = mkdtempSync(join(output, 'run-'));
 const workspace = join(directory, 'workspace');
 mkdirSync(workspace);
 const configPath = join(directory, 'config.json');
+const fileWorkspace = join(directory, 'registered-project');
 const codexHome = join(directory, 'codex-home');
 const rolloutDirectory = join(codexHome, 'sessions', '2026', '10', '30');
 mkdirSync(rolloutDirectory, { recursive: true });
@@ -105,7 +106,7 @@ const mock = createServer(async (req, res) => {
       assert(tool, 'The native write tool must be advertised: ' + JSON.stringify(payload.tools.map(tool => tool.name)));
       events = [events[0],
         { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'write_' + number, name: tool.name, input: {} } },
-        { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ file_path: outside ? join(directory, 'outside.txt') : join(workspace, 'smoke-file.txt'), content: 'written by the actual Harness file tool\n' }) } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify({ file_path: outside ? join(directory, 'outside.txt') : join(fileWorkspace, 'smoke-file.txt'), content: 'written by the actual Harness file tool\n' }) } },
         { type: 'content_block_stop', index: 0 },
         { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 8 } },
         { type: 'message_stop' },
@@ -189,7 +190,7 @@ try {
   await connect();
   console.log('Connected to the production dsh MCP server.');
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map(tool => tool.name).sort(), ['get_status', 'batch_control', 'close_agent', 'followup_task', 'interrupt_agent', 'list_agents', 'list_deliveries', 'list_model', 'list_effort', 'manage_queue', 'pause_agent', 'read_agent', 'resume_agent', 'retry_delivery', 'send_message', 'set_concurrency', 'spawn_agent', 'wait_agent'].sort());
+  assert.deepEqual(tools.map(tool => tool.name).sort(), ['create_workspace', 'list_workspaces', 'get_status', 'batch_control', 'close_agent', 'followup_task', 'interrupt_agent', 'list_agents', 'list_deliveries', 'list_model', 'list_effort', 'manage_queue', 'pause_agent', 'read_agent', 'resume_agent', 'retry_delivery', 'send_message', 'set_concurrency', 'spawn_agent', 'wait_agent'].sort());
   for (const args of [{ max_concurrent_agents: 0 }, { max_concurrent_agents: 1.5 }]) {
     assert((await client.callTool({ name: 'set_concurrency', arguments: args })).isError);
   }
@@ -231,9 +232,12 @@ try {
   await call('followup_task', { target: first.id, message: 'Continue after MCP restart.' });
   await finish(first.id);
   await call('close_agent', { target: first.id });
-  const fileAgent = (await call('spawn_agent', { task_name: 'file_edit', message: 'DSH_WRITE_FIXTURE', max_depth: 1, max_children: 2 })).agent;
+  const registered = (await call('create_workspace', { path: fileWorkspace })).workspace;
+  assert.equal(registered.path, fileWorkspace);
+  assert((await call('list_workspaces')).workspaces.some(row => row.id === registered.id));
+  const fileAgent = (await call('spawn_agent', { workspace_id: registered.id, task_name: 'file_edit', message: 'DSH_WRITE_FIXTURE', max_depth: 1, max_children: 2 })).agent;
   await finish(fileAgent.id);
-  assert.equal(readFileSync(join(workspace, 'smoke-file.txt'), 'utf8'), 'written by the actual Harness file tool\n');
+  assert.equal(readFileSync(join(fileWorkspace, 'smoke-file.txt'), 'utf8'), 'written by the actual Harness file tool\n');
   await call('followup_task', { target: fileAgent.id, message: 'DSH_WRITE_OUTSIDE' });
   await finish(fileAgent.id);
   assert(!existsSync(join(directory, 'outside.txt')), 'Harness must refuse writes outside the agent workspace');
@@ -396,7 +400,7 @@ try {
   assert.equal(metered.tokens.output, settledRequests.length * 8);
   const report = { ok: true, tools: tools.length, mock_model_requests: requests.length,
     verified: ['MCP discovery and validation', 'real CLI startup', 'model-response streaming', 'persistent followup', 'idle mailbox', 'interrupt and resume', 'MCP restart recovery', 'resource close', 'real workspace file edit', 'outside-workspace write denied', 'worker tool policy'],
-    context_inheritance_verified: true, local_codex_context_verified: true, completion_callbacks: callbackRequests.length,
+    registered_workspace_native_write_verified: true, context_inheritance_verified: true, local_codex_context_verified: true, completion_callbacks: callbackRequests.length,
     direct_completion_delivery_verified: true, delegation_verified: true, batch_control_verified: true,
     dynamic_concurrency_verified: true, pause_resume_verified: true, queue_management_verified: true,
     delivery_retry_verified: true, api_metering_verified: true, metered_requests: metered.requests.length,

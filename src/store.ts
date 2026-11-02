@@ -57,7 +57,7 @@ export class StateStore {
   }
 
   read(): SavedState {
-    if (!existsSync(this.path)) return { version: 1, cursor: 0, agents: [], events: [], deliveries: [] };
+    if (!existsSync(this.path)) return { version: 1, cursor: 0, agents: [], events: [], deliveries: [], workspaces: [] };
     // Invalid data must not silently replace existing sessions with an empty registry.
     return stateSchema.parse(JSON.parse(readFileSync(this.path, 'utf8')));
   }

@@ -33,12 +33,12 @@ Start an external agent asynchronously. fork_turns=all inherits a snapshot of th
 
 z.object({
       task_name: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), message,
-      cwd: z.string().optional().describe('Existing directory within the configured workspace_root.'),
+      cwd: z.string().optional().describe('Existing directory inside the selected workspace. Register another project with create_workspace, then pass workspace_id.'),
       parent: target.optional(), model: z.string().min(1).optional().describe('Top-level: choose an available model ID. With a parent, only the parent model and API source are permitted; omission inherits them.'),
       reasoning_effort: z.string().min(1).optional().describe('A declared effort for the chosen model. With a parent, omission inherits its effort; top-level omission uses the first declared effort.'),
       context: z.string().max(80000).optional().describe('Explicit caller context. With all, supplements the parent snapshot or supplies the root conversation; with none, prepends only this explicit context.'),
       fork_turns: z.enum(['none', 'all']).default('none').describe('all: inherit the dsh parent, explicit context, or exact local Codex visible history. none: no automatic inheritance. Default none.'),
-      source_thread_id: z.uuid().optional().describe('Exact local Codex thread UUID for root all without explicit context. Otherwise uses configured codex_thread_id or CODEX_THREAD_ID. The thread workspace must match workspace_root.'),
+      source_thread_id: z.uuid().optional().describe('Exact local Codex thread UUID for root all without explicit context. Otherwise uses configured codex_thread_id or CODEX_THREAD_ID. The thread workspace must match the host-bound main-agent workspace.'),
       notify_on_completion: z.boolean().optional().describe('Return the final result or failure to the bound calling chat when completion_delivery is enabled. app_tools publishes automatically; codex_queue only creates a pending UI item and may require a click. Default follows server config.'),
       max_depth: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional().describe('Remaining delegation levels below the new agent. Default 0 for root agents: no further delegation. Children inherit parent max_depth minus 1; an explicit value may only lower it.'),
       max_children: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional().describe('Lifetime limit of direct children per agent, including closed children. Root default 1; descendants inherit it and may only lower it. 0 forbids child creation. All workers also share the server concurrency and registry limits.'),
@@ -192,3 +192,6 @@ End of inherited snapshot. Your new task follows:
 <input.text>
 
 边界：以上是 dsh MCP 自己注入的内容；外包代理还使用官方 Harness SDK profile 的系统提示、工具定义等。本文件不冒充该完整运行时系统提示，也不是 Codex 自身的系统提示。config/worker.patch.yml 是运行策略补丁，不是提示词文件。
+
+
+Workspace extension: main callers can use create_workspace({path,name?}) and list_workspaces({}). Pass the returned workspace.id to spawn_agent.workspace_id. The user restrict_to_caller_workspace flag and caller_workspace are provided in the task snapshot; when enabled, all workspace roots must remain within the host-bound main-agent directory. Children inherit their parent workspace and cannot create grants, change workspace IDs, or leave parent cwd. These tools do not bypass budgets, enablement, service shutdown, or per-chat isolation.

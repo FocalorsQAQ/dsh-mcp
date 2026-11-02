@@ -4,6 +4,8 @@
 
 窗口标题为 DeepSeek Harness as Subagent。控制窗仅展示汇总在线代理状态，费用和 token 仍在账本中采集。预算以 USD 与 CNY 两个独立金额编辑。
 
+代理设置中的“仅限主 agent 工作区”默认关闭，允许主 agent 接入或创建任意本机目录；开启后限制在主 agent 提交目录及其子目录。与其他配置一样只影响后续提交，由服务端强制检查。已有任务保留原权限。
+
 界面支持简体中文与英文。在控制窗底部的语言下拉框选择，控制窗、API 配置窗、模型配置窗立即同步，保留未保存的表单输入。没有连接 MCP 时也能切换；选择保存在当前项目的 `<data_dir>/desktop/window.json`，重启后恢复。新打开的模型验证确认框也使用所选语言。
 
 文案分别位于 `resources/locales/zh-CN.json` 和 `resources/locales/en-US.json`，语言名称与列表在 `resources/languages.json`。添加语言时登记列表、提供同键名 JSON 并重新构建；缺失翻译回退到中文，资源支持 `{name}` 占位符。错误提示通过资源映射，不直接显示后端错误文案。API 名称、模型 ID 等用户填写的数据保持原样。
@@ -16,11 +18,15 @@ Win32 归属辅助进程只修改控制窗自身，识别桌面 Codex（含 Open
 
 当前 Windows 集成注册一个用户级桌面监听器。它通过 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 在登录时无窗口启动，并每 500 毫秒检查当前桌面会话的 Codex 主窗口；检测到桌面进程的新实例后，立即启动控制窗，不必进入 work、建立 MCP 连接或发出模型请求。Electron 自身初始化仍需少量时间。普通 Codex CLI 和其他 ChatGPT 应用不会触发。
 
-监听器使用按安装位置和配置区分的 Windows 命名互斥锁。每个 Codex 进程实例只触发一次，并比较进程创建时间以处理 PID 复用。相同 `data_dir` 的 Electron 单实例锁防止窗口重复；自动启动不抢焦点。手动关闭后，监听器不会反复重开，下一次 Codex 桌面进程启动时再打开。手动启动命令可随时重新打开，但不会自动解除用户停用状态。
+Electron 界面进程必须使用 `windowsHide: false`，由 `BrowserWindow` 控制初始显示与焦点；后台 Node/Python/PowerShell 辅助进程才隐藏启动。对 Electron 设置隐藏启动会让 Windows 的首次显示调用仍保持隐藏，可能出现空框或无法操作的旧画面。启动脚本的输出只表示请求已发送；窗口是否可见须独立验证。回归测试使用实际 `scripts/start-ui.mjs` 连续关闭、重开，避免直接运行 Electron 绕过安装路径。
+
+监听器使用按安装位置和配置区分的 Windows 命名互斥锁。每个 Codex 进程实例只触发一次，并比较进程创建时间以处理 PID 复用。相同 `data_dir` 的 Electron 单实例锁防止窗口重复；自动启动不抢焦点。手动关闭后，本次 Codex 运行期间保持关闭，下一次 Codex 桌面进程启动时重新打开；窗口恢复不会自动解除用户停用状态。已处理的进程实例会持久保存，监听器自身重启也不会反复弹窗。
 
 安装器或 `Connect to Codex.cmd` 自动注册并启动监听器；卸载只删除本安装拥有且未被用户修改的启动项，并停止监听器。不会改写 Codex 快捷方式或程序文件。状态写入配置文件旁的 `ui-startup-status.json`，只包含进程身份、启动时间及错误代码，不读取聊天内容。`ui_auto_start: false` 会被监听器动态读取以关闭自动打开；该设置不关闭已打开窗口。源码运行前需先构建 UI。
 
-尚未注册桌面监听器的源码/手动安装仍保留 MCP 初始化时打开窗口的兼容路径。已注册的安装由监听器负责，MCP 重连不会重新打开用户关闭的窗口。隔离安装测试可传 `/UISTARTUP=0`，命令行注册可用 `--no-ui-startup` 跳过 Windows 启动项；这不会改变 MCP 或提交快照配置。
+安装及恢复启动通过现有 Windows 桌面启动监听器，避免继承 Codex 的随进程退出清理规则。MCP 初始化时会检查监听器的实时就绪事件，不能仅凭“已注册”文件跳过启动；监听器已退出时自动恢复，正常运行时不会干扰手动关闭的窗口。如果桌面启动通道不可用，记录诊断并回退到直接打开窗口。该恢复不修改外包开关、预算或 API 配置。
+
+尚未注册桌面监听器的源码/手动安装仍保留 MCP 初始化时打开窗口的兼容路径。隔离安装测试可传 `/UISTARTUP=0`，命令行注册可用 `--no-ui-startup` 跳过 Windows 启动项；这不会改变 MCP 或提交快照配置。
 
 也可以在项目目录手动运行：
 
@@ -62,4 +68,4 @@ node scripts/start-ui.mjs --config D:/path/to/dsh.config.json
 
 ## English
 
-The Windows companion opens the control panel when the Codex desktop window starts, before entering a work or connecting MCP. It runs hidden at user logon, triggers once per Codex process generation and respects manual panel closure. Uninstall removes only its owned startup entry. The floating orb and minimize button have been removed; compact mode remains. Settings, submission snapshots, aggregate online details and both languages remain available.
+The Windows companion opens the control panel when the Codex desktop window starts, before entering a work or connecting MCP. It runs hidden at user logon and is launched through the existing Windows desktop so it survives Codex's process cleanup. MCP initialization checks a live readiness event and recovers a missing listener. Manual closure lasts for the current Codex process generation, including listener recovery; restarting Codex opens the panel again without re-enabling a stopped outsourcing service. Uninstall removes only its owned startup entry. The floating orb and minimize button have been removed; compact mode remains. Settings, submission snapshots, aggregate online details and both languages remain available.

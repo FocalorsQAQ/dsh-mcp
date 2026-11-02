@@ -10,7 +10,7 @@
 
 控制窗不再选择聊天。它随时编辑共享默认值，并订阅所有已有聊天服务汇总在线数量；展开后按 work 名称显示子代理、模型和推理强度。已移除悬浮球和最小化按钮。名称只从本地 `session_index.jsonl` 按精确 UUID 解析，不读取聊天正文。
 
-数据隔离不创建独立工作区：代理继续使用受配置限制的工作区，主模型协调并行文件修改。配置快照里的提交目录不会扩大 `workspace_root` 或绕过 `spawn_agent.cwd` 范围验证。
+数据隔离不复制项目：主模型用 `create_workspace` 注册已有目录或创建新目录，以 `spawn_agent.workspace_id` 选择。注册按聊天保存；开启“仅限主 agent 工作区”时，快照中的提交目录成为该轮权限边界。子代理继承父代理的工作区和目录范围，主模型继续协调并行文件修改。详见 [工作区管理](workspaces.md)。
 
 ## 验证
 
@@ -18,4 +18,4 @@
 
 ## English
 
-Each chat owns its agent service and ledger; provider configuration and defaults are shared. A trusted submission hook captures immutable chat/turn settings before model execution. Subsequent edits affect future submissions only. Missing snapshots fail closed. The dashboard aggregates active agents across works without choosing a chat. Workspace boundaries remain unchanged.
+Each chat owns its agent service, workspace registrations and ledger; provider configuration and defaults are shared. A trusted submission hook captures immutable chat/turn settings before model execution, including the workspace restriction. Subsequent edits affect future submissions only. Missing snapshots fail closed. The dashboard aggregates active agents across works without choosing a chat. The main caller can register projects; children inherit the selected workspace and cannot expand their parent scope.

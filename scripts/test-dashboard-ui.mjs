@@ -44,6 +44,8 @@ try {
   await number('顶层代理数量',3,()=>gate.snapshot().settings.max_root_agents===3);
   await page.getByRole('switch',{name:'允许二次外包',exact:true}).click();
   await until(()=>gate.snapshot().settings.allow_secondary);
+  await page.getByRole('switch',{name:'仅限主 agent 工作区',exact:true}).click();
+  await until(()=>gate.snapshot().settings.restrict_to_caller_workspace);
   await page.getByRole('checkbox',{name:'本轮总预算设上限'}).check();await until(()=>gate.snapshot().settings.round_budget!==null);
   await number('本轮总预算美元',2,()=>gate.snapshot().settings.round_budget[0]===2);
   await number('本轮总预算人民币',10,()=>gate.snapshot().settings.round_budget[1]===10);
@@ -58,6 +60,9 @@ try {
   assert.equal(await page.locator('.agent-detail').filter({hasText:'deepseek-v4-flash'}).count(),3);
   await number('本轮总预算人民币',7,()=>gate.snapshot().settings.round_budget[1]===7);
   assert.deepEqual((await a.call('get_status')).structuredContent.control.budget,[2,10]);
+  await page.getByRole('switch',{name:'仅限主 agent 工作区',exact:true}).click();
+  await until(()=>!gate.snapshot().settings.restrict_to_caller_workspace);
+  assert.equal((await a.call('get_status')).structuredContent.control.restrict_to_caller_workspace,true);
   await page.getByRole('switch',{name:'启用外包',exact:true}).click();await until(()=>!gate.enabled);
   assert.equal((await a.call('get_status')).structuredContent.enabled,true);
   assert.equal(snapshots.capture(ids[0],randomUUID(),directory).settings.enabled,false);
@@ -75,6 +80,7 @@ try {
   await page.getByRole('button',{name:'展开窗口'}).click();
   await page.getByRole('combobox',{name:'界面语言'}).selectOption('en-US');
   await page.getByRole('heading',{name:'Next task settings'}).waitFor();
+  assert.equal(await page.getByRole('switch',{name:'Restrict to main-agent workspace',exact:true}).getAttribute('aria-checked'),'false');
   await page.screenshot({path:join(directory,'dashboard-english.png')});
   await a.call('batch_control',{action:'close_agent',path_prefix:'/root'});await b.call('batch_control',{action:'close_agent',path_prefix:'/root'});
   await page.getByText('0 subagents online',{exact:true}).waitFor();
@@ -82,7 +88,7 @@ try {
   await number('Top-level agent limit',5,()=>gate.snapshot().settings.max_root_agents===5);
   assert.equal(await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isAlwaysOnTop()),false);
   assert.deepEqual(errors,[]);
-  const report={ok:true,directory,paid_api_calls:0,checks:['settings editable before any chat or model', 'no chat selector or usage panel', 'all work names and root/child agents', 'frozen budgets and enable state', 'next submission new defaults', 'rename updates', 'no orb or minimize; compact mode preserved', 'bilingual', 'settings editable after services stop']};
+  const report={ok:true,directory,paid_api_calls:0,checks:['settings editable before any chat or model', 'no chat selector or usage panel', 'all work names and root/child agents', 'frozen budgets, enable state and workspace permissions', 'next submission new defaults', 'rename updates', 'no orb or minimize; compact mode preserved', 'bilingual', 'settings editable after services stop']};
   writeFileSync(join(directory,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
 } catch(error) {
   if(desktop) {

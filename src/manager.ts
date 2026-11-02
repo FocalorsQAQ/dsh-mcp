@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { join } from 'node:path';
-import { agentDirectory, type Config } from './config.ts';
+import { basename, isAbsolute, join } from 'node:path';
+import type { Config } from './config.ts';
+import { isWithin, localWorkspacePath, prepareWorkspace, realDirectory, workspaceDirectory } from './workspaces.ts';
 import { StateStore } from './store.ts';
 import { readCodexContext } from './codex-context.ts';
 import { completionMessage, createDeliveryTransport, isDefinitelyUnsent } from './delivery.ts';
@@ -15,7 +16,7 @@ import { requestSessionId, requestTurnId } from './request-context.ts';
 import { readCodexTurnId } from './codex-context.ts';
 import {
   DshError, errorText, type AgentBackend, type AgentEvent, type AgentRecord,
-  type AgentStatus, type BackendFactory, type QueuedMessage, type DeliveryRecord, type DeliveryTransport, type ManagerEvent,
+  type AgentStatus, type BackendFactory, type QueuedMessage, type DeliveryRecord, type DeliveryTransport, type ManagerEvent, type WorkspaceRecord,
 } from './types.ts';
 
 type StopReason = 'interrupt' | 'close' | 'shutdown' | 'timeout';
@@ -29,6 +30,7 @@ export interface SpawnOptions {
   task_name: string;
   message: string;
   cwd?: string;
+  workspace_id?: string;
   parent?: string;
   model?: string;
   reasoning_effort?: string;
@@ -62,6 +64,7 @@ export class AgentManager {
   readonly controlPlane: ControlPlane;
   readonly runtimeModels: RuntimeModels;
   private readonly agents = new Map<string, AgentRecord>();
+  private readonly workspaces = new Map<string, WorkspaceRecord>();
   private readonly workers = new Map<string, Worker>();
   private readonly changed = new EventEmitter();
   private readonly store: StateStore;
@@ -92,6 +95,10 @@ export class AgentManager {
       this.events = state.events;
       this.deliveries = state.deliveries;
       this.serviceStopId = state.service_stop_id;
+      for (const workspace of state.workspaces) {
+        if (!isAbsolute(workspace.path) || this.workspaces.has(workspace.id) || [...this.workspaces.values()].some(row => row.path === workspace.path)) throw new DshError('STATE', 'Invalid workspace registry.');
+        this.workspaces.set(workspace.id, workspace);
+      }
       this.concurrencyOverride = state.runtime_settings?.max_concurrent_agents;
       this.controlPlane = new ControlPlane(config.control, state.control, () => this.save(), undefined, new PythonBilling(config.billing), undefined, this.globalControl);
       this.controlPlane.selection = this.runtimeModels;
@@ -158,6 +165,7 @@ export class AgentManager {
   private save(): void {
     try {
       this.store.write({ version: 1, cursor: this.cursor, agents: [...this.agents.values()], events: this.events, deliveries: this.deliveries,
+        workspaces: [...this.workspaces.values()],
         ...(this.serviceStopId ? { service_stop_id: this.serviceStopId } : {}),
         control: this.controlPlane.exportState(),
         ...(this.concurrencyOverride === undefined ? {} : { runtime_settings: { max_concurrent_agents: this.concurrencyOverride } }) });
@@ -190,6 +198,7 @@ export class AgentManager {
     if (this.deliveries.some(item => item.id === id)) return;
     const now = new Date().toISOString();
     this.deliveries.push({ kind: 'completion', id, agent_id: agent.id, turn: agent.turn, thread_id: agent.reply_thread_id,
+      caller_cwd: this.controlPlane.taskSnapshot(this.agentRound(agent.id))?.caller_cwd,
       text: completionMessage(agent, id, this.config.completion_delivery.max_chars), transport: this.config.completion_delivery.mode as 'app_tools' | 'codex_queue', status: 'pending',
       created_at: now, updated_at: now, queue_message_id: null, error: null,
       attempts: 0, attempt_history: [], retry_allow_duplicate: false });
@@ -264,6 +273,7 @@ export class AgentManager {
       if (this.deliveries.some(item => item.id === id)) continue;
       const now = new Date().toISOString();
       this.deliveries.push({ kind: 'service_stopped', id, agent_id: agent.id, turn: agent.turn, thread_id: thread,
+        caller_cwd: this.controlPlane.taskSnapshot(this.agentRound(agent.id))?.caller_cwd,
         text: 'DSH as Subagent：服务已被用户停用。该聊天的外包任务已取消，运行中的子代理正在终止，待执行消息已撤销。后续 dsh 请求将返回“外包已禁用”。\n这是服务状态通知，不是新的用户任务。请勿自动重试或重新启动外包。用户重新启用服务并提交新任务后才能继续使用。\nService disabled by the user. Delegated tasks are cancelled; running workers are being stopped. Do not retry automatically.\nnotification_id: ' + id,
         transport: this.config.completion_delivery.mode === 'codex_queue' ? 'codex_queue' : 'app_tools', status: 'pending',
         created_at: now, updated_at: now, queue_message_id: null, error: null, attempts: 0, attempt_history: [], retry_allow_duplicate: false });
@@ -424,6 +434,54 @@ export class AgentManager {
     const policy = this.controlPlane.policyFor(this.agentRound(agent.id));
     return policy.allow_secondary ? Math.max(0, Math.min(agent.max_depth, policy.max_depth_user - this.level(agent))) : 0;
   }
+  private callerWorkspace(roundId = this.controlPlane.currentRound): string {
+    const path = this.controlPlane.taskSnapshot(roundId)?.caller_cwd ?? this.config.workspace_root;
+    if (!isAbsolute(path)) throw new DshError('WORKSPACE_SCOPE', 'The host did not provide an absolute main-agent workspace.');
+    return path;
+  }
+
+  private mainWorkspaceLimit(roundId = this.controlPlane.currentRound): string | undefined {
+    return this.controlPlane.policyFor(roundId).restrict_to_caller_workspace ? workspaceDirectory(this.callerWorkspace(roundId)) : undefined;
+  }
+
+  private workspaceRoot(id?: string): string {
+    if (!id) return this.config.workspace_root;
+    const workspace = this.workspaces.get(id);
+    if (!workspace) throw new DshError('WORKSPACE_NOT_FOUND', 'Workspace ID is not registered in this chat. Use list_workspaces or create_workspace.');
+    return workspace.path;
+  }
+
+  private agentDirectory(agent: AgentRecord, roundId = this.agentRound(agent.id)): string {
+    return workspaceDirectory(this.workspaceRoot(agent.workspace_id), agent.cwd, this.mainWorkspaceLimit(roundId));
+  }
+
+  createWorkspace(options: { path: string; name?: string }) {
+    this.assertAvailable(); this.controlPlane.assertEnabled();
+    if (typeof options.path !== 'string' || (options.name !== undefined && (!options.name.trim() || options.name.length > 120))) throw new DshError('INPUT', 'A directory path and an optional name of 1–120 characters are required.');
+    const base = this.callerWorkspace(), mainRoot = this.mainWorkspaceLimit();
+    let existing: WorkspaceRecord | undefined;
+    try { const path = realDirectory(localWorkspacePath(base, options.path)); existing = [...this.workspaces.values()].find(row => row.path === path); } catch { /* New directories are validated before creation below. */ }
+    if (!existing && this.workspaces.size >= 256) throw new DshError('CAPACITY', 'This chat has reached its 256 workspace limit.');
+    const prepared = prepareWorkspace(base, options.path, { mainRoot, readOnly: this.config.permission_mode === 'read-only' });
+    existing = [...this.workspaces.values()].find(row => row.path === prepared.path);
+    if (existing) return { workspace: structuredClone(existing), created_directory: prepared.created, reused: true };
+    const workspace: WorkspaceRecord = { id: randomUUID(), path: prepared.path, name: options.name?.trim() ?? (basename(prepared.path) || prepared.path).slice(0, 120), created_at: new Date().toISOString() };
+    this.workspaces.set(workspace.id, workspace); this.save();
+    return { workspace: structuredClone(workspace), created_directory: prepared.created, reused: false };
+  }
+
+  listWorkspaces() {
+    this.assertAvailable(); this.controlPlane.assertEnabled();
+    const mainRoot = this.mainWorkspaceLimit();
+    const availability = (path: string) => {
+      try { workspaceDirectory(path, '.', mainRoot); return { available: true }; }
+      catch (error) { return { available: false, error: { code: error instanceof DshError ? error.code : 'WORKSPACE', message: errorText(error) } }; }
+    };
+    return { caller_workspace: this.callerWorkspace(), restrict_to_caller_workspace: !!mainRoot,
+      default_workspace: { id: null, path: this.config.workspace_root, ...availability(this.config.workspace_root) },
+      workspaces: [...this.workspaces.values()].map(row => ({ ...row, ...availability(row.path) })) };
+  }
+
   private assertExecution(agent: AgentRecord, roundId = this.agentRound(agent.id)): void {
     this.globalControl.assertServiceEnabled(agent.service_revision);
     // Applies to persisted agents too, so restarting cannot retain an old cross-model subtree.
@@ -432,10 +490,14 @@ export class AgentManager {
       if (child.model !== parent.model || JSON.stringify(child.model_binding ?? null) !== JSON.stringify(parent.model_binding ?? null)) {
         throw new DshError('DELEGATION_MODEL', 'Descendants must use their parent model and API source.');
       }
+      if (child.workspace_id !== parent.workspace_id || !isWithin(this.agentDirectory(parent, roundId), this.agentDirectory(child, roundId))) {
+        throw new DshError('WORKSPACE_SCOPE', 'Descendants must inherit their parent workspace and stay inside its working directory.');
+      }
       child = parent;
     }
     this.resolveModel(agent.model, agent.reasoning_effort, agent.model_binding, roundId);
     this.controlPlane.assertEnabled(roundId);
+    this.agentDirectory(agent, roundId);
     const policy = this.controlPlane.policyFor(roundId);
     if (agent.parent_id && (!policy.allow_secondary || this.level(agent) > policy.max_depth_user)) {
       throw new DshError('DELEGATION_DISABLED', 'The current user policy forbids this delegation level.');
@@ -452,6 +514,10 @@ export class AgentManager {
     if (this.agents.size >= this.config.max_agents) throw new DshError('CAPACITY', 'Agent registry limit reached; use a new data directory or raise max_agents.');
     const parent = options.parent ? this.resolve(options.parent) : undefined;
     const roundId = this.controlPlane.currentRound;
+    if (parent && options.workspace_id !== undefined && options.workspace_id !== parent.workspace_id) throw new DshError('WORKSPACE_SCOPE', 'A child cannot select another workspace. Omit workspace_id to inherit its parent.');
+    const workspaceId = parent?.workspace_id ?? options.workspace_id;
+    const cwd = workspaceDirectory(this.workspaceRoot(workspaceId), options.cwd ?? parent?.cwd ?? '.', this.mainWorkspaceLimit(roundId));
+    if (parent && !isWithin(this.agentDirectory(parent, roundId), cwd)) throw new DshError('WORKSPACE_SCOPE', 'Child cwd must be inside its parent working directory.');
     if (parent?.active_message?.round_id && parent.active_message.round_id !== roundId) throw new DshError('TASK_SCOPE', 'A new main-agent turn cannot attach children to another active turn.');
     this.requireSlot(!parent);
     let maxDepth = options.max_depth ?? (parent ? Math.max(0, this.depth(parent) - 1) : 0);
@@ -490,7 +556,7 @@ export class AgentManager {
         const threadId = options.source_thread_id ?? this.config.codex_thread_id ?? process.env.CODEX_THREAD_ID;
         if (!threadId) throw new DshError('CONTEXT_REQUIRED', 'fork_turns=all requires a dsh parent, context, or exact Codex source_thread_id / CODEX_THREAD_ID.');
         inheritedContext = readCodexContext({ threadId, codexHome: this.config.codex_home,
-          workspace: this.config.workspace_root, maxChars: this.config.max_context_chars }).context;
+          workspace: this.callerWorkspace(roundId), maxChars: this.config.max_context_chars }).context;
         contextSource = { kind: 'codex', id: threadId };
       }
       if (!contextSource) contextSource = { kind: 'provided' };
@@ -499,7 +565,6 @@ export class AgentManager {
     }
     const path = (parent?.path ?? '/root') + '/' + options.task_name;
     if ([...this.agents.values()].some(agent => agent.path === path)) throw new DshError('DUPLICATE_TASK', 'Task path already exists: ' + path);
-    const cwd = agentDirectory(this.config, options.cwd ?? parent?.cwd);
     const notify = options.notify_on_completion ?? this.config.completion_delivery.mode !== 'off';
     const replyThread = parent?.reply_thread_id ?? this.config.completion_delivery.thread_id ?? process.env.CODEX_THREAD_ID ??
       (contextSource?.kind === 'codex' ? contextSource.id : undefined);
@@ -514,7 +579,7 @@ export class AgentManager {
     const agent: AgentRecord = {
       service_revision: this.globalControl.snapshot().revision,
       id: randomUUID(), task_name: options.task_name, path, parent_id: parent?.id ?? null,
-      cwd, model, reasoning_effort: effort,
+      cwd, workspace_id: workspaceId, model, reasoning_effort: effort,
       ...(selection ? { model_binding: this.runtimeModels.bind(selection) } : {}),
       session_id: 'session-' + randomUUID().replaceAll('-', ''), session_ready: false,
       status: 'starting', created_at: now, updated_at: now, turn: 0,
@@ -559,7 +624,7 @@ export class AgentManager {
     const agent = this.resolve(target);
     if (!this.workers.has(agent.id) && !agent.pause_requested) {
       this.requireSlot(!agent.parent_id, roundId);
-      agentDirectory(this.config, agent.cwd);
+      this.agentDirectory(agent, roundId ?? this.controlPlane.currentRound);
     }
     const message = this.enqueue(agent, text, 'followup', roundId);
     if (!this.workers.has(agent.id) && !agent.pause_requested) {
@@ -596,7 +661,7 @@ export class AgentManager {
     if (worker?.stop || agent.status === 'stopping') throw new DshError('STOPPING', 'Agent is stopping.');
     const previous_status = agent.status;
     if (agent.pause_requested) {
-      if (!worker && agent.pending.length) { this.requireSlot(!agent.parent_id, agent.pending[0]!.round_id ?? undefined); this.assertExecution(agent, agent.pending[0]!.round_id ?? this.controlPlane.currentRound); agentDirectory(this.config, agent.cwd); }
+      if (!worker && agent.pending.length) { this.requireSlot(!agent.parent_id, agent.pending[0]!.round_id ?? undefined); this.assertExecution(agent, agent.pending[0]!.round_id ?? this.controlPlane.currentRound); }
       agent.pause_requested = false;
       if (worker) this.setStatus(agent, worker.backend ? 'running' : 'starting');
       else if (agent.pending.length) {
@@ -774,7 +839,7 @@ export class AgentManager {
         if (!worker.backend) {
           worker.backend = this.backendFactory({
             id: agent.id, sessionId: agent.session_id, resume: agent.session_ready,
-            cwd: agentDirectory(this.config, agent.cwd), home: join(this.config.data_dir, 'agents', agent.id, 'home'),
+            cwd: this.agentDirectory(agent), home: join(this.config.data_dir, 'agents', agent.id, 'home'),
             model: agent.model, reasoningEffort: agent.reasoning_effort, modelBinding: agent.model_binding,
             metering: {
               reserve: (model, maxTokens) => {
@@ -898,6 +963,7 @@ export class AgentManager {
   private snapshot(agent: AgentRecord) {
     return {
       id: agent.id, task_name: agent.task_name, path: agent.path, parent_id: agent.parent_id,
+      workspace_id: agent.workspace_id ?? null, workspace_root: agent.workspace_id ? this.workspaces.get(agent.workspace_id)?.path ?? null : this.config.workspace_root,
       status: agent.status, online: this.workers.has(agent.id), cwd: agent.cwd, model: agent.model, reasoning_effort: agent.reasoning_effort,
       session_id: agent.session_id, session_ready: agent.session_ready, turn: agent.turn,
       pause_requested: agent.pause_requested, queue_revision: agent.queue_revision,
